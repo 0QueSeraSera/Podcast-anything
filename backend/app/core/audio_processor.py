@@ -1,0 +1,171 @@
+"""Audio processing and assembly module."""
+
+import uuid
+from pathlib import Path
+from typing import Callable, Optional
+
+from app.config import get_settings
+from app.core.tts_client import TTSClient
+from app.models.schemas import Chapter, GeneratedScript
+
+settings = get_settings()
+
+
+class AudioProcessor:
+    """Processes and assembles audio for podcasts."""
+
+    def __init__(self):
+        self.tts_client = TTSClient()
+
+    async def synthesize(
+        self,
+        script: GeneratedScript,
+        output_dir: Path,
+        podcast_id: str,
+        on_progress: Optional[Callable[[float], None]] = None,
+    ) -> dict:
+        """
+        Synthesize script to audio with chapter markers.
+
+        Returns dict with audio_path, chapters, and duration.
+        """
+        # Collect all text to synthesize
+        text_parts = []
+
+        # Introduction
+        if script.introduction:
+            text_parts.append(("Introduction", script.introduction))
+
+        # Sections
+        for section in script.sections:
+            text_parts.append((section.title, section.content))
+
+        # Conclusion
+        if script.conclusion:
+            text_parts.append(("Conclusion", script.conclusion))
+
+        # Synthesize each part
+        audio_segments = []
+        chapters = []
+        current_time = 0.0
+
+        total_parts = len(text_parts)
+        for i, (title, content) in enumerate(text_parts):
+            if on_progress:
+                on_progress(i / total_parts)
+
+            # Synthesize this section
+            audio_data = await self.tts_client.synthesize(content)
+
+            # Save segment
+            segment_path = output_dir / f"{podcast_id}_{i}.mp3"
+            segment_path.write_bytes(audio_data)
+
+            # Get segment duration
+            duration = self._get_audio_duration(segment_path)
+
+            # Track chapter info
+            chapters.append(
+                Chapter(
+                    id=len(chapters) + 1,
+                    title=title,
+                    start_time=current_time,
+                    end_time=current_time + duration,
+                )
+            )
+
+            audio_segments.append(segment_path)
+            current_time += duration
+
+        # Concatenate all segments
+        output_path = output_dir / f"{podcast_id}.mp3"
+        self._concatenate_audio(audio_segments, output_path)
+
+        # Clean up segment files
+        for segment_path in audio_segments:
+            segment_path.unlink(missing_ok=True)
+
+        # Add chapter markers to MP3
+        self._add_chapter_markers(output_path, chapters)
+
+        return {
+            "audio_path": str(output_path),
+            "chapters": chapters,
+            "duration": current_time,
+        }
+
+    def _get_audio_duration(self, audio_path: Path) -> float:
+        """Get duration of an audio file in seconds."""
+        try:
+            from mutagen.mp3 import MP3
+            audio = MP3(str(audio_path))
+            return audio.info.length
+        except Exception:
+            # Fallback: estimate based on file size
+            # Roughly 1MB per minute for 128kbps MP3
+            file_size = audio_path.stat().st_size
+            return (file_size / (1024 * 1024)) * 60
+
+    def _concatenate_audio(self, segments: list[Path], output: Path):
+        """Concatenate audio segments into one file."""
+        try:
+            from pydub import AudioSegment
+
+            combined = AudioSegment.empty()
+            for segment in segments:
+                audio = AudioSegment.from_mp3(str(segment))
+                combined += audio
+
+            combined.export(str(output), format="mp3")
+        except Exception:
+            # Fallback: use ffmpeg directly
+            import subprocess
+
+            # Create file list for ffmpeg
+            list_file = output.parent / f"{output.stem}_list.txt"
+            with open(list_file, "w") as f:
+                for segment in segments:
+                    f.write(f"file '{segment}'\n")
+
+            cmd = [
+                "ffmpeg",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(list_file),
+                "-c", "copy",
+                str(output),
+                "-y",
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            list_file.unlink(missing_ok=True)
+
+    def _add_chapter_markers(self, audio_path: Path, chapters: list[Chapter]):
+        """Add ID3 chapter markers to MP3 file."""
+        try:
+            from mutagen.mp3 import MP3
+            from mutagen.id3 import ID3, CHAP, TIT2
+
+            audio = MP3(str(audio_path))
+
+            # Ensure ID3 tags exist
+            if audio.tags is None:
+                audio.add_tags()
+
+            # Add chapter frames
+            for chapter in chapters:
+                # Convert seconds to milliseconds
+                start_ms = int(chapter.start_time * 1000)
+                end_ms = int(chapter.end_time * 1000)
+
+                chap_frame = CHAP(
+                    element_id=f"chapter{chapter.id}".encode(),
+                    start_time=start_ms,
+                    end_time=end_ms,
+                    sub_frames=[TIT2(text=chapter.title)],
+                )
+                audio.tags.add(chap_frame)
+
+            audio.save()
+        except Exception:
+            # Chapter markers are optional, don't fail if this doesn't work
+            pass

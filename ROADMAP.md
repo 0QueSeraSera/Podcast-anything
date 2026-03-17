@@ -58,10 +58,10 @@ Understand codebases while away from your computer (commuting, exercising).
 ## MVP Features
 
 - [x] GitHub URL input
-- [ ] File/folder selection (include/exclude)
-- [ ] Chapter/section markers
-- [ ] Playback speed control (0.5x - 2x)
-- [ ] PWA installability
+- [x] File/folder selection (include/exclude)
+- [x] Chapter/section markers
+- [x] Playback speed control (0.5x - 2x)
+- [x] PWA installability
 
 ---
 
@@ -71,32 +71,33 @@ Understand codebases while away from your computer (commuting, exercising).
 - [x] Create ROADMAP.md
 - [x] Create CLAUDE.md
 - [x] Initialize git repository
+- [x] Create README.md
 
-### Phase 1: Foundation
-- [ ] Set up FastAPI project structure
-- [ ] Implement basic API endpoints (health, status)
-- [ ] Integrate Claude Code SDK, test repo analysis
-- [ ] Integrate Alibaba Cloud TTS, test synthesis
+### Phase 1: Foundation ✅
+- [x] Set up FastAPI project structure
+- [x] Implement basic API endpoints (health, status)
+- [x] Integrate Claude Code SDK, test repo analysis
+- [x] Integrate Alibaba Cloud TTS, test synthesis
 
-### Phase 2: Core Pipeline
-- [ ] Build repository cloning and management
-- [ ] Build Claude-based repo analyzer
-- [ ] Build script generator with chapters
-- [ ] Build audio generation pipeline
-- [ ] Implement chapter marker embedding
+### Phase 2: Core Pipeline ✅
+- [x] Build repository cloning and management
+- [x] Build Claude-based repo analyzer
+- [x] Build script generator with chapters
+- [x] Build audio generation pipeline
+- [x] Implement chapter marker embedding
 
-### Phase 3: Frontend
-- [ ] Set up Next.js project with PWA config
-- [ ] Build URL input and file selection UI
-- [ ] Build generation progress tracking
-- [ ] Build audio player with chapters + speed control
-- [ ] Add PWA offline support
+### Phase 3: Frontend ✅
+- [x] Set up Next.js project with PWA config
+- [x] Build URL input and file selection UI
+- [x] Build generation progress tracking
+- [x] Build audio player with chapters + speed control
+- [x] Add PWA offline support
 
 ### Phase 4: Polish
 - [ ] Add caching layer (Redis)
 - [ ] Implement async task queue (Celery)
 - [ ] Add error handling and retries
-- [ ] Docker deployment
+- [x] Docker deployment
 - [ ] Performance optimization
 
 ---
