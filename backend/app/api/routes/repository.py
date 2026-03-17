@@ -8,7 +8,7 @@ from app.models.schemas import (
     AnalyzeResponse,
     FileTreeResponse,
 )
-from app.services.podcast_service import PodcastService
+from app.services.podcast_service import get_podcast_service
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ async def analyze_repository(request: AnalyzeRequest):
 
     Returns a repository ID and basic information.
     """
-    service = PodcastService()
+    service = get_podcast_service()
     try:
         result = await service.analyze_repository(request.url)
         return result
@@ -37,7 +37,7 @@ async def get_repository_structure(repo_id: str):
 
     Used for file/folder selection.
     """
-    service = PodcastService()
+    service = get_podcast_service()
     try:
         result = await service.get_file_tree(repo_id)
         if result is None:

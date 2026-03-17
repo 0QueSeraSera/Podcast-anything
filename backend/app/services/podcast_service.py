@@ -22,6 +22,17 @@ from app.models.schemas import (
 
 settings = get_settings()
 
+# Global singleton instance
+_podcast_service_instance: Optional["PodcastService"] = None
+
+
+def get_podcast_service() -> "PodcastService":
+    """Get the singleton PodcastService instance."""
+    global _podcast_service_instance
+    if _podcast_service_instance is None:
+        _podcast_service_instance = PodcastService()
+    return _podcast_service_instance
+
 
 class PodcastService:
     """Orchestrates the podcast generation pipeline."""
