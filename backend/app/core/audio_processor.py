@@ -1,6 +1,8 @@
 """Audio processing and assembly module."""
 
 import uuid
+import logging
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -9,6 +11,7 @@ from app.core.tts_client import TTSClient
 from app.models.schemas import Chapter, GeneratedScript
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class AudioProcessor:
@@ -31,6 +34,14 @@ class AudioProcessor:
         """
         # Collect all text to synthesize
         text_parts = []
+        logger.info(
+            "Starting audio synthesis pipeline",
+            extra={
+                "podcast_id": podcast_id,
+                "output_dir": str(output_dir),
+                "sections": len(script.sections),
+            },
+        )
 
         # Introduction
         if script.introduction:
@@ -50,11 +61,29 @@ class AudioProcessor:
         current_time = 0.0
 
         total_parts = len(text_parts)
+        logger.info(
+            "Prepared script parts for synthesis",
+            extra={
+                "podcast_id": podcast_id,
+                "total_parts": total_parts,
+            },
+        )
         for i, (title, content) in enumerate(text_parts):
             if on_progress:
                 on_progress(i / total_parts)
 
             # Synthesize this section
+            section_start = time.monotonic()
+            logger.info(
+                "Synthesizing section",
+                extra={
+                    "podcast_id": podcast_id,
+                    "section_index": i + 1,
+                    "total_parts": total_parts,
+                    "title": title,
+                    "content_chars": len(content),
+                },
+            )
             audio_data = await self.tts_client.synthesize(content)
 
             # Save segment
@@ -76,10 +105,31 @@ class AudioProcessor:
 
             audio_segments.append(segment_path)
             current_time += duration
+            logger.info(
+                "Section synthesized",
+                extra={
+                    "podcast_id": podcast_id,
+                    "section_index": i + 1,
+                    "total_parts": total_parts,
+                    "title": title,
+                    "duration_seconds": round(duration, 2),
+                    "elapsed_seconds": round(time.monotonic() - section_start, 2),
+                },
+            )
 
         # Concatenate all segments
         output_path = output_dir / f"{podcast_id}.mp3"
+        concat_start = time.monotonic()
         self._concatenate_audio(audio_segments, output_path)
+        logger.info(
+            "Audio segments concatenated",
+            extra={
+                "podcast_id": podcast_id,
+                "segments": len(audio_segments),
+                "output_path": str(output_path),
+                "elapsed_seconds": round(time.monotonic() - concat_start, 2),
+            },
+        )
 
         # Clean up segment files
         for segment_path in audio_segments:
@@ -87,6 +137,15 @@ class AudioProcessor:
 
         # Add chapter markers to MP3
         self._add_chapter_markers(output_path, chapters)
+        logger.info(
+            "Audio synthesis pipeline completed",
+            extra={
+                "podcast_id": podcast_id,
+                "chapters": len(chapters),
+                "duration_seconds": round(current_time, 2),
+                "audio_path": str(output_path),
+            },
+        )
 
         return {
             "audio_path": str(output_path),

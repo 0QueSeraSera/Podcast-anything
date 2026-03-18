@@ -1,5 +1,6 @@
 """Script generation module."""
 
+import logging
 import re
 from pathlib import Path
 from typing import Optional
@@ -9,6 +10,7 @@ from app.core.claude_client import ClaudeClient
 from app.models.schemas import GeneratedScript, ScriptSection
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class ScriptGenerator:
@@ -24,6 +26,14 @@ class ScriptGenerator:
         selected_files: list[str],
     ) -> GeneratedScript:
         """Generate a podcast script for the repository."""
+        logger.info(
+            "Generating podcast script from repository",
+            extra={
+                "repo_name": repo_name,
+                "repo_path": str(repo_path),
+                "selected_files_count": len(selected_files),
+            },
+        )
         # Get raw script from Claude
         raw_script = await self.claude_client.generate_script(
             repo_path=repo_path,
@@ -32,7 +42,18 @@ class ScriptGenerator:
         )
 
         # Parse into structured format
-        return self._parse_script(raw_script, repo_name)
+        script = self._parse_script(raw_script, repo_name)
+        logger.info(
+            "Podcast script generated and parsed",
+            extra={
+                "repo_name": repo_name,
+                "sections": len(script.sections),
+                "total_estimated_duration_seconds": round(
+                    script.total_estimated_duration, 2
+                ),
+            },
+        )
+        return script
 
     def _parse_script(self, raw_script: str, repo_name: str) -> GeneratedScript:
         """Parse raw markdown script into structured format."""

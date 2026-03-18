@@ -1,5 +1,7 @@
 """Main podcast orchestration service."""
 
+import logging
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +23,7 @@ from app.models.schemas import (
 )
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # Global singleton instance
 _podcast_service_instance: Optional["PodcastService"] = None
@@ -46,9 +49,12 @@ class PodcastService:
 
     async def analyze_repository(self, url: str) -> AnalyzeResponse:
         """Clone and analyze a GitHub repository."""
+        start_time = time.monotonic()
+        logger.info("Analyze repository request received", extra={"url": url})
         # Validate URL
         parsed = urlparse(url)
         if not parsed.netloc == "github.com":
+            logger.warning("Rejected non-GitHub URL", extra={"url": url})
             raise ValueError("Only GitHub repositories are supported")
 
         # Generate repo ID
@@ -67,6 +73,16 @@ class PodcastService:
             "file_count": analysis["file_count"],
             "file_tree": analysis["file_tree"],
         }
+        logger.info(
+            "Repository analysis completed",
+            extra={
+                "repo_id": repo_id,
+                "url": url,
+                "repo_name": analysis["name"],
+                "file_count": analysis["file_count"],
+                "elapsed_seconds": round(time.monotonic() - start_time, 2),
+            },
+        )
 
         return AnalyzeResponse(
             repo_id=repo_id,
@@ -101,8 +117,10 @@ class PodcastService:
         title: Optional[str] = None,
     ) -> CreatePodcastResponse:
         """Start podcast generation."""
+        start_time = time.monotonic()
         repo = self.repos.get(repo_id)
         if not repo:
+            logger.warning("Create podcast failed: repository not found", extra={"repo_id": repo_id})
             raise ValueError("Repository not found")
 
         podcast_id = str(uuid.uuid4())[:8]
@@ -117,10 +135,29 @@ class PodcastService:
             "selected_files": selected_files,
             "title": title or f"Understanding {repo['name']}",
         }
+        logger.info(
+            "Podcast generation requested",
+            extra={
+                "podcast_id": podcast_id,
+                "repo_id": repo_id,
+                "repo_name": repo["name"],
+                "selected_files_count": len(selected_files),
+                "processing_mode": "synchronous",
+            },
+        )
 
         # Start async generation (in production, use Celery)
         # For now, we'll process synchronously
         await self._generate_podcast(podcast_id)
+        logger.info(
+            "Create podcast request finished",
+            extra={
+                "podcast_id": podcast_id,
+                "repo_id": repo_id,
+                "final_status": str(self.podcasts[podcast_id]["status"]),
+                "elapsed_seconds": round(time.monotonic() - start_time, 2),
+            },
+        )
 
         return CreatePodcastResponse(
             podcast_id=podcast_id,
@@ -130,19 +167,38 @@ class PodcastService:
 
     async def _generate_podcast(self, podcast_id: str):
         """Generate the podcast (internal method)."""
+        start_time = time.monotonic()
         podcast = self.podcasts[podcast_id]
         repo = self.repos[podcast["repo_id"]]
         repo_path = Path(repo["path"])
+        logger.info(
+            "Podcast pipeline started",
+            extra={
+                "podcast_id": podcast_id,
+                "repo_id": podcast["repo_id"],
+                "repo_name": repo["name"],
+                "repo_path": str(repo_path),
+            },
+        )
 
         try:
             # Update status
             self._update_status(podcast_id, JobStatus.GENERATING_SCRIPT, 10)
 
             # Generate script
+            script_start = time.monotonic()
             script = await self.script_generator.generate(
                 repo_path=repo_path,
                 repo_name=repo["name"],
                 selected_files=podcast["selected_files"],
+            )
+            logger.info(
+                "Script generation stage completed",
+                extra={
+                    "podcast_id": podcast_id,
+                    "sections": len(script.sections),
+                    "elapsed_seconds": round(time.monotonic() - script_start, 2),
+                },
             )
 
             self._update_status(podcast_id, JobStatus.SYNTHESIZING, 40)
@@ -150,6 +206,8 @@ class PodcastService:
             # Generate audio
             if self.audio_processor is None:
                 self.audio_processor = AudioProcessor()
+                logger.info("AudioProcessor initialized", extra={"podcast_id": podcast_id})
+            audio_start = time.monotonic()
             audio_result = await self.audio_processor.synthesize(
                 script=script,
                 output_dir=Path(settings.audio_output_dir),
@@ -158,6 +216,16 @@ class PodcastService:
                     podcast_id, JobStatus.SYNTHESIZING, 40 + p * 0.5
                 ),
             )
+            logger.info(
+                "Audio synthesis stage completed",
+                extra={
+                    "podcast_id": podcast_id,
+                    "audio_path": str(audio_result["audio_path"]),
+                    "chapters": len(audio_result["chapters"]),
+                    "duration_seconds": round(audio_result["duration"], 2),
+                    "elapsed_seconds": round(time.monotonic() - audio_start, 2),
+                },
+            )
 
             # Store results
             podcast["audio_path"] = str(audio_result["audio_path"])
@@ -165,9 +233,24 @@ class PodcastService:
             podcast["duration"] = audio_result["duration"]
 
             self._update_status(podcast_id, JobStatus.COMPLETED, 100)
+            logger.info(
+                "Podcast pipeline completed",
+                extra={
+                    "podcast_id": podcast_id,
+                    "elapsed_seconds": round(time.monotonic() - start_time, 2),
+                },
+            )
 
         except Exception as e:
             self._update_status(podcast_id, JobStatus.FAILED, 0, str(e))
+            logger.exception(
+                "Podcast pipeline failed",
+                extra={
+                    "podcast_id": podcast_id,
+                    "repo_id": podcast["repo_id"],
+                    "elapsed_seconds": round(time.monotonic() - start_time, 2),
+                },
+            )
 
     def _update_status(
         self,
@@ -178,12 +261,33 @@ class PodcastService:
     ):
         """Update podcast status."""
         podcast = self.podcasts[podcast_id]
+        previous_status = podcast.get("status")
         podcast["status"] = status
         podcast["progress"] = progress
         podcast["updated_at"] = datetime.utcnow()
         podcast["current_step"] = status.value.replace("_", " ").title()
         if error:
             podcast["error"] = error
+        if previous_status != status:
+            logger.info(
+                "Podcast status transitioned",
+                extra={
+                    "podcast_id": podcast_id,
+                    "from_status": str(previous_status),
+                    "to_status": str(status),
+                    "progress": round(progress, 1),
+                    "error": error,
+                },
+            )
+        else:
+            logger.debug(
+                "Podcast progress updated",
+                extra={
+                    "podcast_id": podcast_id,
+                    "status": str(status),
+                    "progress": round(progress, 1),
+                },
+            )
 
     async def get_status(self, podcast_id: str) -> Optional[PodcastStatusResponse]:
         """Get podcast generation status."""

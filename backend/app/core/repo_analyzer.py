@@ -1,6 +1,8 @@
 """Repository analysis module."""
 
+import logging
 import shutil
+import time
 from pathlib import Path
 
 from git import Repo
@@ -9,6 +11,7 @@ from app.config import get_settings
 from app.core.claude_client import ClaudeClient
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class RepoAnalyzer:
@@ -22,18 +25,44 @@ class RepoAnalyzer:
         # Create temp directory for this repo
         repo_path = Path(settings.temp_dir) / "repos" / repo_id
         repo_path.mkdir(parents=True, exist_ok=True)
+        clone_start = time.monotonic()
+        logger.info(
+            "Cloning repository",
+            extra={
+                "repo_id": repo_id,
+                "url": url,
+                "repo_path": str(repo_path),
+            },
+        )
 
         # Clone the repository
         try:
             Repo.clone_from(url, repo_path, depth=1)
         except Exception as e:
             shutil.rmtree(repo_path, ignore_errors=True)
+            logger.exception(
+                "Repository clone failed",
+                extra={
+                    "repo_id": repo_id,
+                    "url": url,
+                    "repo_path": str(repo_path),
+                },
+            )
             raise ValueError(f"Failed to clone repository: {e}")
 
+        logger.info(
+            "Repository cloned",
+            extra={
+                "repo_id": repo_id,
+                "url": url,
+                "elapsed_seconds": round(time.monotonic() - clone_start, 2),
+            },
+        )
         return repo_path
 
     async def analyze(self, repo_path: Path) -> dict:
         """Analyze a cloned repository."""
+        logger.info("Analyzing repository", extra={"repo_path": str(repo_path)})
         return await self.claude_client.get_file_structure(repo_path)
 
     def _manual_analysis(self, repo_path: Path) -> dict:

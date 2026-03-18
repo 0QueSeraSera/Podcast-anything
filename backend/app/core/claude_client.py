@@ -2,7 +2,11 @@
 
 import asyncio
 import json
+import logging
+import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeClient:
@@ -26,29 +30,56 @@ class ClaudeClient:
         cmd = [
             "claude",
             "--print",
-            "--allowedTools", "Read,Glob,Grep",
-            prompt,
         ]
+        start_time = time.monotonic()
+        logger.info(
+            "Starting Claude CLI analysis",
+            extra={
+                "repo_path": str(repo_path),
+                "prompt_chars": len(prompt),
+                "command": " ".join(cmd),
+            },
+        )
 
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=str(repo_path),
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except FileNotFoundError as e:
             if e.filename == "claude":
+                logger.exception("Claude CLI executable not found in PATH")
                 raise RuntimeError(
                     "Claude CLI ('claude') was not found in PATH. Install it and ensure it is available to the backend process."
                 ) from e
             raise
 
-        stdout, stderr = await process.communicate()
+        stdout, stderr = await process.communicate(prompt.encode("utf-8"))
+        elapsed = time.monotonic() - start_time
 
         if process.returncode != 0:
+            logger.error(
+                "Claude CLI exited with error",
+                extra={
+                    "repo_path": str(repo_path),
+                    "return_code": process.returncode,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "stderr_preview": stderr.decode("utf-8", errors="ignore")[:500],
+                },
+            )
             raise RuntimeError(f"Claude CLI error: {stderr.decode()}")
 
+        logger.info(
+            "Claude CLI analysis completed",
+            extra={
+                "repo_path": str(repo_path),
+                "elapsed_seconds": round(elapsed, 2),
+                "stdout_chars": len(stdout),
+            },
+        )
         return stdout.decode()
 
     async def get_file_structure(self, repo_path: Path) -> dict:

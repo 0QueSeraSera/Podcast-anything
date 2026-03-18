@@ -1,11 +1,14 @@
 """Alibaba Cloud DashScope TTS client."""
 
 import asyncio
+import logging
+import time
 from typing import AsyncGenerator, Optional
 
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class TTSClient:
@@ -33,8 +36,18 @@ class TTSClient:
         # Split text into chunks if too long
         chunks = self._split_text(text)
         audio_segments = []
+        logger.info(
+            "Starting TTS synthesis",
+            extra={
+                "model": self.model,
+                "voice": self.voice,
+                "text_chars": len(text),
+                "chunk_count": len(chunks),
+            },
+        )
 
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks, start=1):
+            chunk_start = time.monotonic()
             response = MultiModalConversation.call(
                 model=self.model,
                 messages=[
@@ -49,14 +62,41 @@ class TTSClient:
             )
 
             if response.status_code != 200:
+                logger.error(
+                    "TTS synthesis failed",
+                    extra={
+                        "model": self.model,
+                        "voice": self.voice,
+                        "chunk_index": i,
+                        "chunk_chars": len(chunk),
+                        "status_code": response.status_code,
+                        "message": getattr(response, "message", ""),
+                    },
+                )
                 raise RuntimeError(f"TTS error: {response.message}")
 
             # Extract audio from response
             if hasattr(response, "output") and "audio" in response.output:
                 audio_segments.append(response.output["audio"])
+                logger.info(
+                    "TTS chunk synthesized",
+                    extra={
+                        "chunk_index": i,
+                        "chunk_count": len(chunks),
+                        "chunk_chars": len(chunk),
+                        "elapsed_seconds": round(time.monotonic() - chunk_start, 2),
+                    },
+                )
 
         # For now, return the first segment
         # In production, concatenate all segments
+        logger.info(
+            "TTS synthesis completed",
+            extra={
+                "chunk_count": len(chunks),
+                "audio_segments": len(audio_segments),
+            },
+        )
         return audio_segments[0] if audio_segments else b""
 
     async def synthesize_stream(
