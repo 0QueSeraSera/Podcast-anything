@@ -1,10 +1,7 @@
 """Repository analysis module."""
 
 import shutil
-import tempfile
 from pathlib import Path
-from typing import Optional
-from urllib.parse import urlparse
 
 from git import Repo
 
@@ -37,12 +34,7 @@ class RepoAnalyzer:
 
     async def analyze(self, repo_path: Path) -> dict:
         """Analyze a cloned repository."""
-        # Try to use Claude for analysis
-        try:
-            return await self.claude_client.get_file_structure(repo_path)
-        except Exception:
-            # Fallback to manual analysis
-            return self._manual_analysis(repo_path)
+        return await self.claude_client.get_file_structure(repo_path)
 
     def _manual_analysis(self, repo_path: Path) -> dict:
         """Manually analyze repository structure."""

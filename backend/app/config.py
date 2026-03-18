@@ -13,10 +13,10 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # API Keys
-    anthropic_api_key: Optional[str] = None
     dashscope_api_key: Optional[str] = None
 
     # Application
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     @property
     def is_configured(self) -> bool:
         """Check if required API keys are configured."""
-        return bool(self.anthropic_api_key and self.dashscope_api_key)
+        return bool(self.dashscope_api_key)
 
 
 @lru_cache

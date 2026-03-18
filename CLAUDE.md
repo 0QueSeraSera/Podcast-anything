@@ -47,9 +47,11 @@ Podcast-Anything/
 
 Backend requires:
 ```
-ANTHROPIC_API_KEY=your_key
 DASHSCOPE_API_KEY=your_key
 ```
+
+Code analysis and script generation use `claude` CLI directly from `PATH`.
+No Anthropic API key is required by this project for code analysis.
 
 ## Running the Application
 
@@ -76,7 +78,7 @@ npm run dev
 
 ## Key Implementation Notes
 
-1. **Claude Code Integration**: Use `claude-agent-sdk` with streaming responses
+1. **Claude Code Integration**: Invoke `claude` CLI via subprocess with repository cwd
 2. **TTS Chunking**: Split text into ~500 character chunks for optimal synthesis
 3. **Chapter Markers**: Use ID3 CHAP frames for MP3 chapters
 4. **PWA**: Service worker caches audio for offline playback

@@ -3,20 +3,13 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
-
-from app.config import get_settings
-
-settings = get_settings()
 
 
 class ClaudeClient:
     """Client for interacting with Claude Code CLI."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.anthropic_api_key
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not configured")
+    def __init__(self):
+        """Initialize Claude CLI client."""
 
     async def analyze_codebase(
         self,
@@ -34,18 +27,22 @@ class ClaudeClient:
             "claude",
             "--print",
             "--allowedTools", "Read,Glob,Grep",
-            "--cwd", str(repo_path),
             prompt,
         ]
 
-        env = {"ANTHROPIC_API_KEY": self.api_key}
-
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(repo_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError as e:
+            if e.filename == "claude":
+                raise RuntimeError(
+                    "Claude CLI ('claude') was not found in PATH. Install it and ensure it is available to the backend process."
+                ) from e
+            raise
 
         stdout, stderr = await process.communicate()
 

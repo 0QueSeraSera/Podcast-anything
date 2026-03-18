@@ -16,8 +16,8 @@ Convert GitHub repositories into educational audio explanations (like a programm
 
 - Python 3.11+
 - Node.js 18+
+- Claude Code CLI (`claude`) installed and available in `PATH` (for code analysis/script generation)
 - API Keys:
-  - Anthropic API key (for Claude)
   - Alibaba Cloud DashScope API key (for TTS)
 
 ### Backend Setup

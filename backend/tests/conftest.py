@@ -15,7 +15,6 @@ from app.config import Settings
 def mock_settings() -> Settings:
     """Override settings for testing."""
     return Settings(
-        anthropic_api_key="test-anthropic-key",
         dashscope_api_key="test-dashscope-key",
         app_name="TestApp",
         app_version="0.0.0-test",
@@ -128,7 +127,6 @@ def clean_singleton():
 @pytest.fixture
 def mock_env_vars(monkeypatch: pytest.MonkeyPatch):
     """Set required environment variables for testing."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-dashscope-key")
 
 

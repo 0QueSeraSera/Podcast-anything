@@ -42,7 +42,7 @@ class PodcastService:
         self.podcasts: dict = {}  # In-memory storage
         self.repo_analyzer = RepoAnalyzer()
         self.script_generator = ScriptGenerator()
-        self.audio_processor = AudioProcessor()
+        self.audio_processor: Optional[AudioProcessor] = None
 
     async def analyze_repository(self, url: str) -> AnalyzeResponse:
         """Clone and analyze a GitHub repository."""
@@ -148,6 +148,8 @@ class PodcastService:
             self._update_status(podcast_id, JobStatus.SYNTHESIZING, 40)
 
             # Generate audio
+            if self.audio_processor is None:
+                self.audio_processor = AudioProcessor()
             audio_result = await self.audio_processor.synthesize(
                 script=script,
                 output_dir=Path(settings.audio_output_dir),
