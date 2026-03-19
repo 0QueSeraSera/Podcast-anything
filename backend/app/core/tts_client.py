@@ -70,7 +70,8 @@ class TTSClient:
                         "chunk_index": i,
                         "chunk_chars": len(chunk),
                         "status_code": response.status_code,
-                        "message": getattr(response, "message", ""),
+                        # Avoid reserved LogRecord keys like "message".
+                        "error_message": getattr(response, "message", ""),
                     },
                 )
                 raise RuntimeError(f"TTS error: {response.message}")

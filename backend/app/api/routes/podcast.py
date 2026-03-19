@@ -11,6 +11,7 @@ from app.models.schemas import (
     CreatePodcastResponse,
     PodcastStatusResponse,
     ChapterListResponse,
+    ScriptContentResponse,
 )
 from app.services.podcast_service import get_podcast_service
 
@@ -116,3 +117,20 @@ async def get_podcast_chapters(podcast_id: str):
         logger.warning("Podcast chapters not found", extra={"podcast_id": podcast_id})
         raise HTTPException(status_code=404, detail="Podcast not found")
     return ChapterListResponse(podcast_id=podcast_id, chapters=chapters)
+
+
+@router.get("/{podcast_id}/script", response_model=ScriptContentResponse)
+async def get_podcast_script(podcast_id: str):
+    """
+    Get raw Claude CLI script output for inspection/debugging.
+    """
+    service = get_podcast_service()
+    script_result = await service.get_script_content(podcast_id)
+    if script_result is None:
+        raise HTTPException(status_code=404, detail="Script output not found")
+
+    return ScriptContentResponse(
+        podcast_id=podcast_id,
+        source_path=script_result["source_path"],
+        content=script_result["content"],
+    )

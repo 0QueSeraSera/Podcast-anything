@@ -23,10 +23,13 @@ class Settings(BaseSettings):
     app_name: str = "Podcast-Anything"
     app_version: str = "0.1.0"
     debug: bool = False
+    e2e_mock_pipeline: bool = False
+    e2e_skip_tts: bool = False
 
     # Paths
     temp_dir: str = "/tmp/podcast-anything"
     audio_output_dir: str = "/tmp/podcast-anything/audio"
+    claude_output_dir: str = "/tmp/podcast-anything/claude-output"
 
     # TTS Settings
     tts_model: str = "qwen3-tts-flash"

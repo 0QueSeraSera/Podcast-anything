@@ -3,10 +3,15 @@
 import asyncio
 import json
 import logging
+import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
+from app.config import get_settings
+
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class ClaudeClient:
@@ -14,6 +19,7 @@ class ClaudeClient:
 
     def __init__(self):
         """Initialize Claude CLI client."""
+        self.last_output_path: Path | None = None
 
     async def analyze_codebase(
         self,
@@ -80,7 +86,36 @@ class ClaudeClient:
                 "stdout_chars": len(stdout),
             },
         )
-        return stdout.decode()
+        output_text = stdout.decode()
+        output_path = self._persist_cli_output(repo_path=repo_path, output_text=output_text)
+        self.last_output_path = output_path
+        if output_path:
+            logger.info(
+                "Claude CLI output persisted",
+                extra={
+                    "repo_path": str(repo_path),
+                    "output_path": str(output_path),
+                },
+            )
+        return output_text
+
+    def _persist_cli_output(self, repo_path: Path, output_text: str) -> Path | None:
+        """Persist raw Claude CLI output for debugging and inspection."""
+        try:
+            output_dir = Path(settings.claude_output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            safe_repo = re.sub(r"[^a-zA-Z0-9._-]+", "-", repo_path.name).strip("-") or "repo"
+            file_path = output_dir / f"{timestamp}-{safe_repo}-script.md"
+            file_path.write_text(output_text, encoding="utf-8")
+            return file_path
+        except Exception:
+            logger.exception(
+                "Failed to persist Claude CLI output",
+                extra={"repo_path": str(repo_path)},
+            )
+            return None
 
     async def get_file_structure(self, repo_path: Path) -> dict:
         """Get the file structure of a repository."""

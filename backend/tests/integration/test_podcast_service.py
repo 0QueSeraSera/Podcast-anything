@@ -354,3 +354,26 @@ class TestPodcastServiceChapters:
         chapters = await service.get_chapters("unknown")
 
         assert chapters is None
+
+
+class TestPodcastServiceScriptOutput:
+    """Tests for persisted script output retrieval."""
+
+    @pytest.mark.asyncio
+    async def test_get_script_content_returns_persisted_output(self):
+        """Script content endpoint data should come from stored file path."""
+        script_path = Path(tempfile.mkdtemp()) / "script.md"
+        script_path.write_text("# Test script", encoding="utf-8")
+
+        service = PodcastService.__new__(PodcastService)
+        service.podcasts = {
+            "pod1234": {
+                "script_output_path": str(script_path),
+            }
+        }
+
+        result = await service.get_script_content("pod1234")
+
+        assert result is not None
+        assert result["source_path"] == str(script_path)
+        assert result["content"] == "# Test script"

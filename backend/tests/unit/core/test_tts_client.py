@@ -1,5 +1,7 @@
-"""Unit tests for TTSClient._split_text() method."""
+"""Unit tests for TTSClient behavior."""
 
+import sys
+import types
 import pytest
 
 from app.core.tts_client import TTSClient
@@ -141,3 +143,29 @@ class TestTTSSplitText:
 
         # Smaller max_length should result in more chunks
         assert len(chunks_20) >= len(chunks_50)
+
+
+@pytest.mark.asyncio
+async def test_synthesize_error_does_not_crash_logging(monkeypatch):
+    """Non-200 TTS responses should raise RuntimeError, not logging KeyError."""
+
+    class _Response:
+        status_code = 500
+        message = "upstream failed"
+        output = {}
+
+    class _FakeMMC:
+        @staticmethod
+        def call(**kwargs):
+            return _Response()
+
+    fake_dashscope = types.SimpleNamespace(api_key=None, MultiModalConversation=_FakeMMC)
+    monkeypatch.setitem(sys.modules, "dashscope", fake_dashscope)
+
+    client = TTSClient.__new__(TTSClient)
+    client.api_key = "test-key"
+    client.model = "test-model"
+    client.voice = "test-voice"
+
+    with pytest.raises(RuntimeError, match="TTS error: upstream failed"):
+        await client.synthesize("hello world")

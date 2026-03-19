@@ -96,6 +96,50 @@ See [ROADMAP.md](./ROADMAP.md) for the project roadmap and implementation progre
 
 See [CLAUDE.md](./CLAUDE.md) for Claude Code instructions.
 
+## Testing
+
+### Full-stack E2E automation
+
+Run this from `frontend`:
+
+```bash
+npm run test:e2e:fullstack
+```
+
+Prerequisites for the command above:
+- Run `npm install` in `frontend` (installs Playwright binaries in `node_modules`).
+- Create backend venv and install backend deps in `backend` (`python -m venv venv && source venv/bin/activate && pip install -r requirements.txt`).
+
+This command starts:
+- backend on `127.0.0.1:8000` with `E2E_MOCK_PIPELINE=true` (prefers `backend/venv/bin/python` when present)
+- frontend on `127.0.0.1:3000` with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`
+
+It automates the full user journey:
+paste GitHub URL -> analyze -> select files -> enter scope instruction -> generate podcast -> verify podcast page/audio/chapters.
+
+### Non-mock full-stack pipeline (real GitHub + Claude CLI)
+
+Run this from `frontend`:
+
+```bash
+npm run test:e2e:nonmock
+```
+
+What it does:
+- uses real repository analysis (no `E2E_MOCK_PIPELINE`)
+- uses real Claude CLI script generation
+- skips TTS with `E2E_SKIP_TTS=true` so you can inspect script output quickly
+
+Optional override for repo URL:
+
+```bash
+NONMOCK_E2E_REPO_URL=https://github.com/octocat/Hello-World npm run test:e2e:nonmock
+```
+
+Inspect raw Claude script output after generation:
+- file output directory: `CLAUDE_OUTPUT_DIR` (default: `/tmp/podcast-anything/claude-output`)
+- API endpoint: `GET /api/v1/podcast/{podcast_id}/script`
+
 ## License
 
 MIT

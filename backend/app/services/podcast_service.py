@@ -1,5 +1,7 @@
 """Main podcast orchestration service."""
 
+import asyncio
+import base64
 import logging
 import time
 import uuid
@@ -18,6 +20,7 @@ from app.models.schemas import (
     FileNode,
     CreatePodcastResponse,
     PodcastStatusResponse,
+    GeneratedScript,
     JobStatus,
     Chapter,
 )
@@ -59,6 +62,9 @@ class PodcastService:
 
         # Generate repo ID
         repo_id = str(uuid.uuid4())[:8]
+
+        if settings.e2e_mock_pipeline:
+            return await self._analyze_repository_mock(url=url, repo_id=repo_id)
 
         # Clone and analyze
         repo_path = await self.repo_analyzer.clone(url, repo_id)
@@ -151,7 +157,10 @@ class PodcastService:
 
         # Start async generation (in production, use Celery)
         # For now, we'll process synchronously
-        await self._generate_podcast(podcast_id)
+        if settings.e2e_mock_pipeline:
+            await self._generate_podcast_mock(podcast_id)
+        else:
+            await self._generate_podcast(podcast_id)
         logger.info(
             "Create podcast request finished",
             extra={
@@ -196,6 +205,10 @@ class PodcastService:
                 selected_files=podcast["selected_files"],
                 learning_preferences=podcast.get("learning_preferences"),
             )
+            raw_output_path = self.script_generator.claude_client.last_output_path
+            if raw_output_path:
+                podcast["script_output_path"] = str(raw_output_path)
+
             logger.info(
                 "Script generation stage completed",
                 extra={
@@ -204,6 +217,17 @@ class PodcastService:
                     "elapsed_seconds": round(time.monotonic() - script_start, 2),
                 },
             )
+
+            if settings.e2e_skip_tts:
+                self._complete_without_tts(podcast_id=podcast_id, script=script)
+                logger.info(
+                    "Podcast pipeline completed with TTS skipped",
+                    extra={
+                        "podcast_id": podcast_id,
+                        "elapsed_seconds": round(time.monotonic() - start_time, 2),
+                    },
+                )
+                return
 
             self._update_status(podcast_id, JobStatus.SYNTHESIZING, 40)
 
@@ -255,6 +279,135 @@ class PodcastService:
                     "elapsed_seconds": round(time.monotonic() - start_time, 2),
                 },
             )
+
+    async def _analyze_repository_mock(self, url: str, repo_id: str) -> AnalyzeResponse:
+        """Return deterministic repo metadata for full-stack E2E runs."""
+        start_time = time.monotonic()
+        repo_name = self._extract_repo_name(url)
+        repo_path = Path(settings.temp_dir) / "e2e-repos" / repo_id
+        repo_path.mkdir(parents=True, exist_ok=True)
+
+        # Materialize a minimal file set so selected paths are realistic.
+        (repo_path / "README.md").write_text(f"# {repo_name}\n", encoding="utf-8")
+        src_dir = repo_path / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (src_dir / "main.py").write_text("print('hello from e2e')\n", encoding="utf-8")
+        (src_dir / "utils.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+
+        file_tree = {
+            "name": repo_name,
+            "path": ".",
+            "is_dir": True,
+            "children": [
+                {"name": "README.md", "path": "README.md", "is_dir": False},
+                {
+                    "name": "src",
+                    "path": "src",
+                    "is_dir": True,
+                    "children": [
+                        {"name": "main.py", "path": "src/main.py", "is_dir": False},
+                        {"name": "utils.py", "path": "src/utils.py", "is_dir": False},
+                    ],
+                },
+            ],
+        }
+
+        self.repos[repo_id] = {
+            "url": url,
+            "path": str(repo_path),
+            "name": repo_name,
+            "description": "Deterministic repository fixture for full-stack E2E tests",
+            "file_count": 3,
+            "file_tree": file_tree,
+        }
+        logger.info(
+            "Repository analysis completed in E2E mock mode",
+            extra={
+                "repo_id": repo_id,
+                "url": url,
+                "repo_name": repo_name,
+                "elapsed_seconds": round(time.monotonic() - start_time, 2),
+            },
+        )
+
+        return AnalyzeResponse(
+            repo_id=repo_id,
+            name=repo_name,
+            description="Deterministic repository fixture for full-stack E2E tests",
+            file_count=3,
+        )
+
+    async def _generate_podcast_mock(self, podcast_id: str):
+        """Generate deterministic podcast artifacts for full-stack E2E runs."""
+        podcast = self.podcasts[podcast_id]
+
+        self._update_status(podcast_id, JobStatus.GENERATING_SCRIPT, 20)
+        await asyncio.sleep(0.05)
+
+        self._update_status(podcast_id, JobStatus.SYNTHESIZING, 60)
+        await asyncio.sleep(0.05)
+
+        output_dir = Path(settings.audio_output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        audio_path = output_dir / f"{podcast_id}.mp3"
+        audio_path.write_bytes(self._mock_mp3_bytes())
+
+        podcast["audio_path"] = str(audio_path)
+        podcast["chapters"] = [
+            Chapter(id=1, title="Introduction", start_time=0.0, end_time=10.0),
+            Chapter(id=2, title="Core Concepts", start_time=10.0, end_time=30.0),
+            Chapter(id=3, title="Wrap Up", start_time=30.0, end_time=45.0),
+        ]
+        podcast["duration"] = 45.0
+
+        self._update_status(podcast_id, JobStatus.COMPLETED, 100)
+
+    def _complete_without_tts(self, podcast_id: str, script: GeneratedScript):
+        """Mark podcast complete using script-only chapter metadata."""
+        podcast = self.podcasts[podcast_id]
+        chapters = self._build_chapters_from_script(script)
+        podcast["chapters"] = chapters
+        podcast["duration"] = script.total_estimated_duration
+        podcast["audio_path"] = None
+        self._update_status(podcast_id, JobStatus.COMPLETED, 100)
+
+    @staticmethod
+    def _build_chapters_from_script(script: GeneratedScript) -> list[Chapter]:
+        """Build chapter metadata directly from generated script sections."""
+        chapters: list[Chapter] = []
+        current = 0.0
+        for idx, section in enumerate(script.sections, start=1):
+            duration = max(float(section.estimated_duration), 1.0)
+            chapters.append(
+                Chapter(
+                    id=idx,
+                    title=section.title,
+                    start_time=round(current, 2),
+                    end_time=round(current + duration, 2),
+                )
+            )
+            current += duration
+        return chapters
+
+    @staticmethod
+    def _extract_repo_name(url: str) -> str:
+        """Extract repository name from URL."""
+        path = urlparse(url).path.strip("/")
+        if not path:
+            return "repository"
+        return path.split("/")[-1] or "repository"
+
+    @staticmethod
+    def _mock_mp3_bytes() -> bytes:
+        """Return a tiny deterministic MP3 payload for browser playback."""
+        # Small silent MP3 frame sequence, base64 encoded.
+        return base64.b64decode(
+            "SUQzAwAAAAAAFlRFTkMAAAAMAAADTGF2ZjU2LjQwLjEwMQAAAAAAAAAAAAAA//uQxAADBzQATKxAAAAAAAABAAACcQCA"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )
 
     def _update_status(
         self,
@@ -314,7 +467,29 @@ class PodcastService:
         podcast = self.podcasts.get(podcast_id)
         if not podcast or podcast["status"] != JobStatus.COMPLETED:
             return None
-        return Path(podcast["audio_path"])
+        audio_path = podcast.get("audio_path")
+        if not audio_path:
+            return None
+        return Path(audio_path)
+
+    async def get_script_content(self, podcast_id: str) -> Optional[dict]:
+        """Get persisted Claude CLI script output for a podcast."""
+        podcast = self.podcasts.get(podcast_id)
+        if not podcast:
+            return None
+
+        script_output_path = podcast.get("script_output_path")
+        if not script_output_path:
+            return None
+
+        path = Path(script_output_path)
+        if not path.exists():
+            return None
+
+        return {
+            "source_path": str(path),
+            "content": path.read_text(encoding="utf-8"),
+        }
 
     async def get_chapters(self, podcast_id: str) -> Optional[list[Chapter]]:
         """Get chapters for a podcast."""

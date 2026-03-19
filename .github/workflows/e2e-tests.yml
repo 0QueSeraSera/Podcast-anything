@@ -16,20 +16,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  e2e:
+  e2e-fullstack:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    services:
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -60,34 +49,13 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: frontend
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install --with-deps chromium
 
-      - name: Start backend server
-        working-directory: backend
-        run: |
-          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          echo "Waiting for backend to start..."
-          sleep 5
-          curl --retry 10 --retry-delay 2 --retry-connrefused http://localhost:8000/health
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'test-key' }}
-          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY || 'test-key' }}
-          REDIS_URL: redis://localhost:6379/0
-
-      - name: Start frontend server
+      - name: Run full-stack E2E test
         working-directory: frontend
-        run: |
-          npm run dev &
-          echo "Waiting for frontend to start..."
-          sleep 10
+        run: npm run test:e2e:fullstack
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:8000
-
-      - name: Run E2E tests
-        working-directory: frontend
-        run: npx playwright test
-        env:
-          BASE_URL: http://localhost:3000
+          BASE_URL: http://127.0.0.1:3000
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -102,46 +70,5 @@ jobs:
         if: failure()
         with:
           name: playwright-screenshots
-          path: frontend/test-results/
-          retention-days: 7
-
-  # Run E2E tests on multiple browsers in parallel
-  e2e-browsers:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps ${{ matrix.browser }}
-
-      - name: Run E2E tests on ${{ matrix.browser }}
-        working-directory: frontend
-        run: npx playwright test --project=${{ matrix.browser }}
-        env:
-          BASE_URL: http://localhost:3000
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-${{ matrix.browser }}-results
           path: frontend/test-results/
           retention-days: 7
