@@ -78,15 +78,24 @@ class ClaudeClient:
             )
             raise RuntimeError(f"Claude CLI error: {stderr.decode()}")
 
+        output_text = stdout.decode()
         logger.info(
             "Claude CLI analysis completed",
             extra={
                 "repo_path": str(repo_path),
                 "elapsed_seconds": round(elapsed, 2),
-                "stdout_chars": len(stdout),
+                "stdout_chars": len(output_text),
             },
         )
-        output_text = stdout.decode()
+        logger.info(
+            "Claude CLI output captured",
+            extra={
+                "repo_path": str(repo_path),
+                "output_preview": re.sub(r"\s+", " ", output_text).strip()[:400],
+            },
+        )
+        preview = re.sub(r"\s+", " ", output_text).strip()[:400]
+        logger.info("Claude CLI output preview: %s", preview)
         output_path = self._persist_cli_output(repo_path=repo_path, output_text=output_text)
         self.last_output_path = output_path
         if output_path:
@@ -95,6 +104,7 @@ class ClaudeClient:
                 extra={
                     "repo_path": str(repo_path),
                     "output_path": str(output_path),
+                    "output_bytes": output_path.stat().st_size,
                 },
             )
         return output_text
@@ -206,27 +216,34 @@ Focus on these files/directories:
 {files_context}
 {preferences_block}
 
-Generate a script with the following structure:
+You MUST return plain markdown in this exact high-level structure:
+## Introduction
+[2-4 short paragraphs introducing what the project does, who it is for, and how to think about it]
 
-# Introduction
-[Brief overview of what this project does and who it's for]
-
-# Chapter 1: Architecture Overview
+## Architecture Overview
 [Explain the high-level architecture and main components]
 
-# Chapter 2-N: Key Components
-[For each major component, explain its purpose and how it works]
+## [Key Component 1]
+[How it works and why it matters]
 
-# Conclusion
-[Summary and key takeaways]
+## [Key Component 2]
+[How it works and why it matters]
 
-Guidelines:
-- Write in a conversational, educational tone
-- Explain concepts as if teaching a developer who is new to the codebase
-- Include specific code examples where helpful
-- Each chapter should be 2-3 minutes when read aloud
-- Use clear section headers with ## for chapters
+## Conclusion
+[Concise summary and key takeaways]
 
-Return the complete script as markdown."""
+Formatting constraints (strict):
+- Use only level-2 headers (`##`) for all sections.
+- Do NOT use level-1 headers (`#`), code fences, tables, HTML, or block quotes.
+- Do NOT include raw JSON, XML, stack traces, shell transcripts, or long symbol-heavy snippets.
+- Keep sentences natural for text-to-speech; avoid uncommon Unicode symbols.
+- If referencing code, describe it in prose rather than pasting large code blocks.
+
+Content guidelines:
+- Write in a conversational, educational tone for developers new to the codebase.
+- Each non-introduction/non-conclusion section should target about 2-3 minutes when read aloud.
+- Prefer short paragraphs and smooth transitions between sections.
+
+Return only the final markdown script, with no preamble or postscript."""
 
         return await self.analyze_codebase(repo_path, prompt)

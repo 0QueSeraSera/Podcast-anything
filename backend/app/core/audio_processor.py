@@ -3,6 +3,7 @@
 import uuid
 import logging
 import time
+import wave
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -87,7 +88,8 @@ class AudioProcessor:
             audio_data = await self.tts_client.synthesize(content)
 
             # Save segment
-            segment_path = output_dir / f"{podcast_id}_{i}.mp3"
+            segment_ext = ".wav" if self._is_wav_bytes(audio_data) else ".mp3"
+            segment_path = output_dir / f"{podcast_id}_{i}{segment_ext}"
             segment_path.write_bytes(audio_data)
 
             # Get segment duration
@@ -118,7 +120,8 @@ class AudioProcessor:
             )
 
         # Concatenate all segments
-        output_path = output_dir / f"{podcast_id}.mp3"
+        output_ext = ".wav" if audio_segments and all(p.suffix == ".wav" for p in audio_segments) else ".mp3"
+        output_path = output_dir / f"{podcast_id}{output_ext}"
         concat_start = time.monotonic()
         self._concatenate_audio(audio_segments, output_path)
         logger.info(
@@ -155,6 +158,14 @@ class AudioProcessor:
 
     def _get_audio_duration(self, audio_path: Path) -> float:
         """Get duration of an audio file in seconds."""
+        if audio_path.suffix.lower() == ".wav":
+            try:
+                with wave.open(str(audio_path), "rb") as wav_file:
+                    frames = wav_file.getnframes()
+                    frame_rate = wav_file.getframerate()
+                    return frames / float(frame_rate)
+            except Exception:
+                pass
         try:
             from mutagen.mp3 import MP3
             audio = MP3(str(audio_path))
@@ -167,6 +178,9 @@ class AudioProcessor:
 
     def _concatenate_audio(self, segments: list[Path], output: Path):
         """Concatenate audio segments into one file."""
+        if output.suffix.lower() == ".wav" and all(s.suffix.lower() == ".wav" for s in segments):
+            self._concatenate_wav(segments, output)
+            return
         try:
             from pydub import AudioSegment
 
@@ -197,6 +211,39 @@ class AudioProcessor:
             ]
             subprocess.run(cmd, check=True, capture_output=True)
             list_file.unlink(missing_ok=True)
+
+    @staticmethod
+    def _is_wav_bytes(audio_data: bytes) -> bool:
+        """Check whether byte payload is RIFF/WAV."""
+        return bool(audio_data and audio_data.startswith(b"RIFF"))
+
+    @staticmethod
+    def _concatenate_wav(segments: list[Path], output: Path):
+        """Concatenate WAV files using Python stdlib only."""
+        if not segments:
+            raise ValueError("No segments provided")
+
+        with wave.open(str(segments[0]), "rb") as first_wav:
+            params = first_wav.getparams()
+            frames = [first_wav.readframes(first_wav.getnframes())]
+
+        for segment in segments[1:]:
+            with wave.open(str(segment), "rb") as wav_file:
+                current = wav_file.getparams()
+                if (
+                    current.nchannels != params.nchannels
+                    or current.sampwidth != params.sampwidth
+                    or current.framerate != params.framerate
+                ):
+                    raise ValueError("Incompatible WAV segment format for concatenation")
+                frames.append(wav_file.readframes(wav_file.getnframes()))
+
+        with wave.open(str(output), "wb") as out_wav:
+            out_wav.setnchannels(params.nchannels)
+            out_wav.setsampwidth(params.sampwidth)
+            out_wav.setframerate(params.framerate)
+            for frame_chunk in frames:
+                out_wav.writeframes(frame_chunk)
 
     def _add_chapter_markers(self, audio_path: Path, chapters: list[Chapter]):
         """Add ID3 chapter markers to MP3 file."""

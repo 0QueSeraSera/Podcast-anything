@@ -59,3 +59,29 @@ async def test_analyze_codebase_missing_claude_has_clear_error(monkeypatch):
     client = ClaudeClient()
     with pytest.raises(RuntimeError, match="Claude CLI"):
         await client.analyze_codebase(Path("."), "test prompt")
+
+
+@pytest.mark.asyncio
+async def test_generate_script_prompt_enforces_strict_markdown_format(monkeypatch):
+    """Prompt should require TTS-safe markdown output constraints."""
+    captured = {}
+
+    async def fake_analyze_codebase(repo_path, prompt):
+        captured["repo_path"] = repo_path
+        captured["prompt"] = prompt
+        return "ok"
+
+    client = ClaudeClient()
+    monkeypatch.setattr(client, "analyze_codebase", fake_analyze_codebase)
+
+    result = await client.generate_script(
+        repo_path=Path("."),
+        repo_name="demo-repo",
+        selected_files=["backend/app/main.py"],
+        learning_preferences="focus on backend architecture",
+    )
+
+    assert result == "ok"
+    assert "Use only level-2 headers (`##`) for all sections." in captured["prompt"]
+    assert "Do NOT use level-1 headers (`#`), code fences, tables, HTML, or block quotes." in captured["prompt"]
+    assert "Return only the final markdown script" in captured["prompt"]

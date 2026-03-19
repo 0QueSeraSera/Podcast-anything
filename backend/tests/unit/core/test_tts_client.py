@@ -7,6 +7,18 @@ import pytest
 from app.core.tts_client import TTSClient
 
 
+def _install_fake_dashscope_qwen_tts(monkeypatch, synthesizer_cls):
+    """Install fake dashscope modules for qwen_tts import path."""
+    dashscope_mod = types.ModuleType("dashscope")
+    dashscope_mod.api_key = None
+    audio_mod = types.ModuleType("dashscope.audio")
+    qwen_tts_mod = types.ModuleType("dashscope.audio.qwen_tts")
+    qwen_tts_mod.SpeechSynthesizer = synthesizer_cls
+    monkeypatch.setitem(sys.modules, "dashscope", dashscope_mod)
+    monkeypatch.setitem(sys.modules, "dashscope.audio", audio_mod)
+    monkeypatch.setitem(sys.modules, "dashscope.audio.qwen_tts", qwen_tts_mod)
+
+
 class TestTTSSplitText:
     """Tests for the _split_text method."""
 
@@ -154,18 +166,115 @@ async def test_synthesize_error_does_not_crash_logging(monkeypatch):
         message = "upstream failed"
         output = {}
 
-    class _FakeMMC:
+    class _FakeSynthesizer:
         @staticmethod
         def call(**kwargs):
             return _Response()
 
-    fake_dashscope = types.SimpleNamespace(api_key=None, MultiModalConversation=_FakeMMC)
-    monkeypatch.setitem(sys.modules, "dashscope", fake_dashscope)
+    _install_fake_dashscope_qwen_tts(monkeypatch, _FakeSynthesizer)
 
     client = TTSClient.__new__(TTSClient)
     client.api_key = "test-key"
     client.model = "test-model"
     client.voice = "test-voice"
 
-    with pytest.raises(RuntimeError, match="TTS error: upstream failed"):
+    with pytest.raises(RuntimeError, match="all chunks failed to synthesize"):
         await client.synthesize("hello world")
+
+
+@pytest.mark.asyncio
+async def test_synthesize_raises_when_no_valid_chunks_after_sanitization(monkeypatch):
+    """If sanitization removes meaningful content, synthesis should fail early."""
+    called = {"count": 0}
+
+    class _FakeSynthesizer:
+        @staticmethod
+        def call(**kwargs):
+            called["count"] += 1
+            raise AssertionError("TTS API should not be called")
+
+    _install_fake_dashscope_qwen_tts(monkeypatch, _FakeSynthesizer)
+
+    client = TTSClient.__new__(TTSClient)
+    client.api_key = "test-key"
+    client.model = "test-model"
+    client.voice = "test-voice"
+
+    with pytest.raises(RuntimeError, match="no valid text chunks after sanitization"):
+        await client.synthesize("```python\\nprint('x')\\n```")
+    assert called["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_synthesize_retries_chunk_with_fallback(monkeypatch):
+    """Invalid first attempt should retry once with a simplified chunk."""
+    calls = []
+
+    class _ErrorResponse:
+        status_code = 400
+        message = "Due to invalid text, invalid audio was returned."
+        output = {}
+
+    class _OkResponse:
+        status_code = 200
+        message = ""
+        output = {"audio": b"AUDIO_OK"}
+
+    class _FakeSynthesizer:
+        @staticmethod
+        def call(**kwargs):
+            calls.append(kwargs["text"])
+            if len(calls) == 1:
+                return _ErrorResponse()
+            return _OkResponse()
+
+    _install_fake_dashscope_qwen_tts(monkeypatch, _FakeSynthesizer)
+
+    client = TTSClient.__new__(TTSClient)
+    client.api_key = "test-key"
+    client.model = "test-model"
+    client.voice = "test-voice"
+
+    audio = await client.synthesize("Use value @@@ foo() >>> ???")
+
+    assert audio == b"AUDIO_OK"
+    assert len(calls) == 2
+    assert calls[1] != calls[0]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_skips_invalid_chunk_and_continues(monkeypatch):
+    """A permanently invalid chunk should be skipped if later chunks succeed."""
+    calls = []
+
+    class _Response:
+        def __init__(self, status_code, message="", output=None):
+            self.status_code = status_code
+            self.message = message
+            self.output = output or {}
+
+    class _FakeSynthesizer:
+        @staticmethod
+        def call(**kwargs):
+            chunk = kwargs["text"]
+            calls.append(chunk)
+            if "first chunk content" in chunk:
+                return _Response(400, "Due to invalid text, invalid audio was returned.")
+            return _Response(200, output={"audio": b"AUDIO_OK"})
+
+    _install_fake_dashscope_qwen_tts(monkeypatch, _FakeSynthesizer)
+
+    client = TTSClient.__new__(TTSClient)
+    client.api_key = "test-key"
+    client.model = "test-model"
+    client.voice = "test-voice"
+    monkeypatch.setattr(
+        client,
+        "_split_text",
+        lambda text, max_length=500: ["first chunk content", "second chunk content"],
+    )
+
+    audio = await client.synthesize("input text")
+
+    assert audio == b"AUDIO_OK"
+    assert len(calls) >= 2

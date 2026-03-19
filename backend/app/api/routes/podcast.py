@@ -98,10 +98,13 @@ async def get_podcast_audio(podcast_id: str):
     if audio_path is None:
         logger.warning("Podcast audio not ready", extra={"podcast_id": podcast_id})
         raise HTTPException(status_code=404, detail="Audio not found or not ready")
+    suffix = audio_path.suffix.lower()
+    media_type = "audio/wav" if suffix == ".wav" else "audio/mpeg"
+    filename_ext = "wav" if suffix == ".wav" else "mp3"
     return FileResponse(
         path=audio_path,
-        media_type="audio/mpeg",
-        filename=f"podcast-{podcast_id}.mp3",
+        media_type=media_type,
+        filename=f"podcast-{podcast_id}.{filename_ext}",
     )
 
 
