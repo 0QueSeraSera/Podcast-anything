@@ -8,7 +8,12 @@ const podcastStates = new Map<string, any>()
 export const podcastHandlers = [
   // POST /api/v1/podcast/create
   http.post(`${API_BASE}/podcast/create`, async ({ request }) => {
-    const body = await request.json() as { repo_id: string; selected_files: string[]; title?: string }
+    const body = await request.json() as {
+      repo_id: string
+      selected_files: string[]
+      title?: string
+      learning_preferences?: string
+    }
 
     if (body.repo_id === 'not-found') {
       return HttpResponse.json(

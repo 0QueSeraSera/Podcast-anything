@@ -5,10 +5,7 @@ import shutil
 import time
 from pathlib import Path
 
-from git import Repo
-
 from app.config import get_settings
-from app.core.claude_client import ClaudeClient
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -18,7 +15,7 @@ class RepoAnalyzer:
     """Analyzes GitHub repositories."""
 
     def __init__(self):
-        self.claude_client = ClaudeClient()
+        """Initialize repository analyzer."""
 
     async def clone(self, url: str, repo_id: str) -> Path:
         """Clone a repository to a temporary directory."""
@@ -37,7 +34,18 @@ class RepoAnalyzer:
 
         # Clone the repository
         try:
+            from git import Repo
             Repo.clone_from(url, repo_path, depth=1)
+        except ModuleNotFoundError as e:
+            shutil.rmtree(repo_path, ignore_errors=True)
+            logger.exception(
+                "GitPython is not installed",
+                extra={
+                    "repo_id": repo_id,
+                    "url": url,
+                },
+            )
+            raise ValueError("Git support is unavailable: install GitPython") from e
         except Exception as e:
             shutil.rmtree(repo_path, ignore_errors=True)
             logger.exception(
@@ -62,8 +70,11 @@ class RepoAnalyzer:
 
     async def analyze(self, repo_path: Path) -> dict:
         """Analyze a cloned repository."""
-        logger.info("Analyzing repository", extra={"repo_path": str(repo_path)})
-        return await self.claude_client.get_file_structure(repo_path)
+        logger.info(
+            "Building repository structure locally",
+            extra={"repo_path": str(repo_path)},
+        )
+        return self._manual_analysis(repo_path)
 
     def _manual_analysis(self, repo_path: Path) -> dict:
         """Manually analyze repository structure."""

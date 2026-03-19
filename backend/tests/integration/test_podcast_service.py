@@ -63,7 +63,12 @@ def mock_script_generator():
 
     generator = MagicMock()
 
-    async def mock_generate(repo_path, repo_name, selected_files):
+    async def mock_generate(
+        repo_path,
+        repo_name,
+        selected_files,
+        learning_preferences=None,
+    ):
         return GeneratedScript(
             repo_name=repo_name,
             title=f"Understanding {repo_name}",

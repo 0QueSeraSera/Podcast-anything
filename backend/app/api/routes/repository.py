@@ -16,9 +16,9 @@ router = APIRouter()
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_repository(request: AnalyzeRequest):
     """
-    Clone and analyze a GitHub repository.
+    Clone a GitHub repository and register its basic metadata.
 
-    Returns a repository ID and basic information.
+    Returns a repository ID and basic information for file tree browsing.
     """
     service = get_podcast_service()
     try:

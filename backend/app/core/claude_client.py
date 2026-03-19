@@ -151,14 +151,25 @@ Return ONLY the JSON object, no other text."""
         repo_path: Path,
         repo_name: str,
         selected_files: list[str],
+        learning_preferences: str | None = None,
     ) -> str:
         """Generate an educational podcast script for the repository."""
         files_context = "\n".join(f"- {f}" for f in selected_files) if selected_files else "all files"
+        preferences = (learning_preferences or "").strip()
+        preferences_block = ""
+        if preferences:
+            preferences_block = f"""
+
+Learner scope preferences:
+{preferences}
+
+Use these preferences to prioritize topics the learner wants and avoid topics they do not want."""
 
         prompt = f"""Create an educational podcast script explaining this codebase: {repo_name}
 
 Focus on these files/directories:
 {files_context}
+{preferences_block}
 
 Generate a script with the following structure:
 

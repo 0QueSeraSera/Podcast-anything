@@ -59,9 +59,9 @@ export default function Home() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <FeatureCard
-            icon="🎙️"
-            title="AI-Powered Analysis"
-            description="Claude analyzes your codebase structure and key components"
+            icon="🌲"
+            title="File Tree First"
+            description="Clone and browse repository structure before choosing your learning scope"
           />
           <FeatureCard
             icon="📚"

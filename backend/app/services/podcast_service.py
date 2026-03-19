@@ -48,7 +48,7 @@ class PodcastService:
         self.audio_processor: Optional[AudioProcessor] = None
 
     async def analyze_repository(self, url: str) -> AnalyzeResponse:
-        """Clone and analyze a GitHub repository."""
+        """Clone a GitHub repository and extract file tree metadata locally."""
         start_time = time.monotonic()
         logger.info("Analyze repository request received", extra={"url": url})
         # Validate URL
@@ -115,6 +115,7 @@ class PodcastService:
         repo_id: str,
         selected_files: list[str],
         title: Optional[str] = None,
+        learning_preferences: Optional[str] = None,
     ) -> CreatePodcastResponse:
         """Start podcast generation."""
         start_time = time.monotonic()
@@ -134,6 +135,7 @@ class PodcastService:
             "updated_at": now,
             "selected_files": selected_files,
             "title": title or f"Understanding {repo['name']}",
+            "learning_preferences": learning_preferences,
         }
         logger.info(
             "Podcast generation requested",
@@ -142,6 +144,7 @@ class PodcastService:
                 "repo_id": repo_id,
                 "repo_name": repo["name"],
                 "selected_files_count": len(selected_files),
+                "has_learning_preferences": bool(learning_preferences and learning_preferences.strip()),
                 "processing_mode": "synchronous",
             },
         )
@@ -191,6 +194,7 @@ class PodcastService:
                 repo_path=repo_path,
                 repo_name=repo["name"],
                 selected_files=podcast["selected_files"],
+                learning_preferences=podcast.get("learning_preferences"),
             )
             logger.info(
                 "Script generation stage completed",

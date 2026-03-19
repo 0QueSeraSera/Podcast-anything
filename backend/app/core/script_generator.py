@@ -24,6 +24,7 @@ class ScriptGenerator:
         repo_path: Path,
         repo_name: str,
         selected_files: list[str],
+        learning_preferences: Optional[str] = None,
     ) -> GeneratedScript:
         """Generate a podcast script for the repository."""
         logger.info(
@@ -32,6 +33,9 @@ class ScriptGenerator:
                 "repo_name": repo_name,
                 "repo_path": str(repo_path),
                 "selected_files_count": len(selected_files),
+                "has_learning_preferences": bool(
+                    learning_preferences and learning_preferences.strip()
+                ),
             },
         )
         # Get raw script from Claude
@@ -39,6 +43,7 @@ class ScriptGenerator:
             repo_path=repo_path,
             repo_name=repo_name,
             selected_files=selected_files,
+            learning_preferences=learning_preferences,
         )
 
         # Parse into structured format

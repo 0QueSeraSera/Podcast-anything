@@ -39,6 +39,7 @@ async def create_podcast(request: CreatePodcastRequest):
             repo_id=request.repo_id,
             selected_files=request.selected_files,
             title=request.title,
+            learning_preferences=request.learning_preferences,
         )
         logger.info(
             "POST /podcast/create completed",

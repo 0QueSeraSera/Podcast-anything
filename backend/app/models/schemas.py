@@ -53,6 +53,7 @@ class CreatePodcastRequest(BaseModel):
     repo_id: str
     selected_files: list[str] = Field(default_factory=list)
     title: Optional[str] = None
+    learning_preferences: Optional[str] = None
 
 
 class CreatePodcastResponse(BaseModel):
