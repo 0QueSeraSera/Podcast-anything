@@ -2,7 +2,9 @@
 
 import asyncio
 import base64
+import json
 import logging
+import shutil
 import time
 import uuid
 from datetime import datetime
@@ -23,6 +25,9 @@ from app.models.schemas import (
     GeneratedScript,
     JobStatus,
     Chapter,
+    SavePodcastResponse,
+    SavedPodcastMetadata,
+    SavedPodcastListResponse,
 )
 
 settings = get_settings()
@@ -497,3 +502,150 @@ class PodcastService:
         if not podcast:
             return None
         return podcast.get("chapters", [])
+
+    def _get_library_dir(self) -> Path:
+        """Get the local library directory path."""
+        return Path.home() / ".podcast_anything"
+
+    async def save_podcast(self, podcast_id: str) -> SavePodcastResponse:
+        """Save podcast artifacts to local library at ~/.podcast_anything."""
+        start_time = time.monotonic()
+        podcast = self.podcasts.get(podcast_id)
+        if not podcast:
+            logger.warning("Save podcast failed: podcast not found", extra={"podcast_id": podcast_id})
+            raise ValueError("Podcast not found")
+
+        if podcast["status"] != JobStatus.COMPLETED:
+            logger.warning(
+                "Save podcast failed: podcast not completed",
+                extra={"podcast_id": podcast_id, "status": str(podcast["status"])},
+            )
+            raise ValueError("Podcast is not completed yet")
+
+        library_dir = self._get_library_dir()
+        podcast_dir = library_dir / podcast_id
+        podcast_dir.mkdir(parents=True, exist_ok=True)
+
+        audio_saved = False
+        script_saved = False
+        metadata_saved = False
+
+        # Save audio file
+        audio_path = podcast.get("audio_path")
+        if audio_path:
+            src_audio = Path(audio_path)
+            if src_audio.exists():
+                dst_audio = podcast_dir / f"audio{src_audio.suffix}"
+                shutil.copy2(src_audio, dst_audio)
+                audio_saved = True
+                logger.debug(
+                    "Audio file saved to library",
+                    extra={"podcast_id": podcast_id, "dst_path": str(dst_audio)},
+                )
+
+        # Save script file
+        script_path = podcast.get("script_output_path")
+        if script_path:
+            src_script = Path(script_path)
+            if src_script.exists():
+                dst_script = podcast_dir / "script.md"
+                shutil.copy2(src_script, dst_script)
+                script_saved = True
+                logger.debug(
+                    "Script file saved to library",
+                    extra={"podcast_id": podcast_id, "dst_path": str(dst_script)},
+                )
+
+        # Save metadata
+        repo = self.repos.get(podcast["repo_id"], {})
+        metadata = {
+            "podcast_id": podcast_id,
+            "title": podcast.get("title", "Untitled Podcast"),
+            "repo_name": repo.get("name"),
+            "created_at": podcast["created_at"].isoformat(),
+            "saved_at": datetime.utcnow().isoformat(),
+            "duration": podcast.get("duration"),
+            "chapters": [c.model_dump() for c in podcast.get("chapters", [])],
+        }
+        metadata_path = podcast_dir / "metadata.json"
+        metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        metadata_saved = True
+
+        logger.info(
+            "Podcast saved to local library",
+            extra={
+                "podcast_id": podcast_id,
+                "saved_path": str(podcast_dir),
+                "audio_saved": audio_saved,
+                "script_saved": script_saved,
+                "metadata_saved": metadata_saved,
+                "elapsed_seconds": round(time.monotonic() - start_time, 2),
+            },
+        )
+
+        return SavePodcastResponse(
+            podcast_id=podcast_id,
+            saved_path=str(podcast_dir),
+            audio_saved=audio_saved,
+            script_saved=script_saved,
+            metadata_saved=metadata_saved,
+        )
+
+    async def list_saved_podcasts(self) -> SavedPodcastListResponse:
+        """List all podcasts saved in local library."""
+        library_dir = self._get_library_dir()
+        podcasts: list[SavedPodcastMetadata] = []
+
+        if not library_dir.exists():
+            return SavedPodcastListResponse(podcasts=podcasts)
+
+        for podcast_dir in library_dir.iterdir():
+            if not podcast_dir.is_dir():
+                continue
+            metadata_path = podcast_dir / "metadata.json"
+            if not metadata_path.exists():
+                continue
+            try:
+                data = json.loads(metadata_path.read_text(encoding="utf-8"))
+                podcasts.append(
+                    SavedPodcastMetadata(
+                        podcast_id=data["podcast_id"],
+                        title=data.get("title", "Untitled"),
+                        repo_name=data.get("repo_name"),
+                        created_at=datetime.fromisoformat(data["created_at"]),
+                        saved_at=datetime.fromisoformat(data["saved_at"]),
+                        duration=data.get("duration"),
+                        chapters=[Chapter(**c) for c in data.get("chapters", [])],
+                    )
+                )
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                logger.warning(
+                    "Failed to parse saved podcast metadata",
+                    extra={"path": str(metadata_path), "error": str(e)},
+                )
+
+        # Sort by saved_at descending (most recent first)
+        podcasts.sort(key=lambda p: p.saved_at, reverse=True)
+        logger.debug("Listed saved podcasts", extra={"count": len(podcasts)})
+        return SavedPodcastListResponse(podcasts=podcasts)
+
+    async def get_saved_podcast_path(self, podcast_id: str, file_type: str) -> Optional[Path]:
+        """Get path to a saved podcast file."""
+        library_dir = self._get_library_dir()
+        podcast_dir = library_dir / podcast_id
+        if not podcast_dir.exists():
+            return None
+
+        if file_type == "audio":
+            for ext in (".mp3", ".wav"):
+                audio_path = podcast_dir / f"audio{ext}"
+                if audio_path.exists():
+                    return audio_path
+            return None
+        elif file_type == "script":
+            script_path = podcast_dir / "script.md"
+            return script_path if script_path.exists() else None
+        elif file_type == "metadata":
+            metadata_path = podcast_dir / "metadata.json"
+            return metadata_path if metadata_path.exists() else None
+        return None

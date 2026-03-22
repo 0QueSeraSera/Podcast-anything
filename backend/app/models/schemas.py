@@ -114,3 +114,30 @@ class GeneratedScript(BaseModel):
     sections: list[ScriptSection]
     conclusion: str
     total_estimated_duration: float
+
+
+# Save/Library Schemas
+
+class SavePodcastResponse(BaseModel):
+    """Response after saving a podcast to local library."""
+    podcast_id: str
+    saved_path: str
+    audio_saved: bool
+    script_saved: bool
+    metadata_saved: bool
+
+
+class SavedPodcastMetadata(BaseModel):
+    """Metadata for a saved podcast."""
+    podcast_id: str
+    title: str
+    repo_name: Optional[str] = None
+    created_at: datetime
+    saved_at: datetime
+    duration: Optional[float] = None
+    chapters: list[Chapter] = Field(default_factory=list)
+
+
+class SavedPodcastListResponse(BaseModel):
+    """List of saved podcasts."""
+    podcasts: list[SavedPodcastMetadata]

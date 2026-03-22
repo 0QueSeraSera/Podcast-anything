@@ -12,6 +12,8 @@ from app.models.schemas import (
     PodcastStatusResponse,
     ChapterListResponse,
     ScriptContentResponse,
+    SavePodcastResponse,
+    SavedPodcastListResponse,
 )
 from app.services.podcast_service import get_podcast_service
 
@@ -136,4 +138,84 @@ async def get_podcast_script(podcast_id: str):
         podcast_id=podcast_id,
         source_path=script_result["source_path"],
         content=script_result["content"],
+    )
+
+
+@router.post("/{podcast_id}/save", response_model=SavePodcastResponse)
+async def save_podcast(podcast_id: str):
+    """
+    Save podcast artifacts (audio, script, metadata) to local library at ~/.podcast_anything.
+    """
+    service = get_podcast_service()
+    start_time = time.monotonic()
+    logger.info("POST /podcast/{podcast_id}/save received", extra={"podcast_id": podcast_id})
+    try:
+        result = await service.save_podcast(podcast_id)
+        logger.info(
+            "POST /podcast/{podcast_id}/save completed",
+            extra={
+                "podcast_id": podcast_id,
+                "saved_path": result.saved_path,
+                "elapsed_seconds": round(time.monotonic() - start_time, 2),
+            },
+        )
+        return result
+    except ValueError as e:
+        logger.warning(
+            "POST /podcast/{podcast_id}/save rejected",
+            extra={"podcast_id": podcast_id, "error": str(e)},
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(
+            "POST /podcast/{podcast_id}/save failed",
+            extra={"podcast_id": podcast_id},
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to save podcast: {str(e)}")
+
+
+@router.get("/saved", response_model=SavedPodcastListResponse)
+async def list_saved_podcasts():
+    """
+    List all podcasts saved in local library.
+    """
+    service = get_podcast_service()
+    logger.debug("GET /podcast/saved")
+    return await service.list_saved_podcasts()
+
+
+@router.get("/saved/{podcast_id}/audio")
+async def get_saved_podcast_audio(podcast_id: str):
+    """
+    Stream or download audio from saved library.
+    """
+    service = get_podcast_service()
+    logger.info("GET /podcast/saved/{podcast_id}/audio", extra={"podcast_id": podcast_id})
+    audio_path = await service.get_saved_podcast_path(podcast_id, "audio")
+    if audio_path is None:
+        raise HTTPException(status_code=404, detail="Saved audio not found")
+    suffix = audio_path.suffix.lower()
+    media_type = "audio/wav" if suffix == ".wav" else "audio/mpeg"
+    filename_ext = "wav" if suffix == ".wav" else "mp3"
+    return FileResponse(
+        path=audio_path,
+        media_type=media_type,
+        filename=f"podcast-{podcast_id}.{filename_ext}",
+    )
+
+
+@router.get("/saved/{podcast_id}/script")
+async def get_saved_podcast_script(podcast_id: str):
+    """
+    Get script from saved library.
+    """
+    service = get_podcast_service()
+    logger.debug("GET /podcast/saved/{podcast_id}/script", extra={"podcast_id": podcast_id})
+    script_path = await service.get_saved_podcast_path(podcast_id, "script")
+    if script_path is None:
+        raise HTTPException(status_code=404, detail="Saved script not found")
+    return FileResponse(
+        path=script_path,
+        media_type="text/markdown",
+        filename=f"podcast-{podcast_id}-script.md",
     )
