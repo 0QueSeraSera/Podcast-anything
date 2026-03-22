@@ -70,7 +70,7 @@ docker run -p 8000:8000 --env-file .env podcast-anything-backend
 |--------|----------|-------------|
 | POST | `/api/v1/repository/analyze` | Clone and analyze repo |
 | GET | `/api/v1/repository/{id}/structure` | Get file tree |
-| POST | `/api/v1/podcast/create` | Start generation job |
+| POST | `/api/v1/podcast/create` | Queue generation job (returns `202`) |
 | GET | `/api/v1/podcast/{id}/status` | Check progress |
 | GET | `/api/v1/podcast/{id}/audio` | Stream/download audio |
 | GET | `/api/v1/podcast/{id}/chapters` | Get chapter metadata |

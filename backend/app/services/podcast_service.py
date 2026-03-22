@@ -51,6 +51,7 @@ class PodcastService:
     def __init__(self):
         self.repos: dict = {}  # In-memory storage (use Redis/DB in production)
         self.podcasts: dict = {}  # In-memory storage
+        self._generation_tasks: set[asyncio.Task] = set()
         self.repo_analyzer = RepoAnalyzer()
         self.script_generator = ScriptGenerator()
         self.audio_processor: Optional[AudioProcessor] = None
@@ -144,6 +145,7 @@ class PodcastService:
             "progress": 0.0,
             "created_at": now,
             "updated_at": now,
+            "current_step": "Pending",
             "selected_files": selected_files,
             "title": title or f"Understanding {repo['name']}",
             "learning_preferences": learning_preferences,
@@ -156,31 +158,61 @@ class PodcastService:
                 "repo_name": repo["name"],
                 "selected_files_count": len(selected_files),
                 "has_learning_preferences": bool(learning_preferences and learning_preferences.strip()),
-                "processing_mode": "synchronous",
+                "processing_mode": "async_background",
             },
         )
 
-        # Start async generation (in production, use Celery)
-        # For now, we'll process synchronously
-        if settings.e2e_mock_pipeline:
-            await self._generate_podcast_mock(podcast_id)
-        else:
-            await self._generate_podcast(podcast_id)
+        self._schedule_generation_task(podcast_id)
+        current_status = self.podcasts[podcast_id]["status"]
         logger.info(
-            "Create podcast request finished",
+            "Create podcast request accepted",
             extra={
                 "podcast_id": podcast_id,
                 "repo_id": repo_id,
-                "final_status": str(self.podcasts[podcast_id]["status"]),
+                "status": str(current_status),
                 "elapsed_seconds": round(time.monotonic() - start_time, 2),
             },
         )
 
         return CreatePodcastResponse(
             podcast_id=podcast_id,
-            status=JobStatus.PENDING,
+            status=current_status,
             message="Podcast generation started",
         )
+
+    def _schedule_generation_task(self, podcast_id: str):
+        """Queue podcast generation on the event loop and track task lifecycle."""
+        self._ensure_generation_task_store()
+        task = asyncio.create_task(self._run_generation_task(podcast_id))
+        self._generation_tasks.add(task)
+        task.add_done_callback(self._on_generation_task_done)
+
+    async def _run_generation_task(self, podcast_id: str):
+        """Run generation in background and convert uncaught failures into failed status."""
+        try:
+            if settings.e2e_mock_pipeline:
+                await self._generate_podcast_mock(podcast_id)
+            else:
+                await self._generate_podcast(podcast_id)
+        except Exception as e:
+            self._update_status(podcast_id, JobStatus.FAILED, 0, str(e))
+            logger.exception(
+                "Background podcast task failed unexpectedly",
+                extra={"podcast_id": podcast_id},
+            )
+
+    def _on_generation_task_done(self, task: asyncio.Task):
+        """Release completed task references and report uncaught failures."""
+        self._generation_tasks.discard(task)
+        try:
+            task.result()
+        except Exception:
+            logger.exception("Podcast generation task crashed")
+
+    def _ensure_generation_task_store(self):
+        """Initialize generation task tracking for tests that bypass __init__."""
+        if not hasattr(self, "_generation_tasks"):
+            self._generation_tasks = set()
 
     async def _generate_podcast(self, podcast_id: str):
         """Generate the podcast (internal method)."""

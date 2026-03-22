@@ -21,10 +21,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/create", response_model=CreatePodcastResponse)
+@router.post("/create", response_model=CreatePodcastResponse, status_code=202)
 async def create_podcast(request: CreatePodcastRequest):
     """
-    Start a podcast generation job.
+    Queue a podcast generation job and return immediately.
 
     Accepts repository ID and selected files/folders.
     """

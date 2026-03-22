@@ -16,9 +16,9 @@ Conventions:
 - Priority: `P0`
 - Effort: `M`
 - Depends on: none
-- [ ] Make `/api/v1/podcast/create` either truly async/background or explicitly synchronous in API + UI.
-- [ ] Ensure returned status matches real backend state.
-- [ ] Add integration test for long-running generation behavior.
+- [x] Make `/api/v1/podcast/create` either truly async/background or explicitly synchronous in API + UI.
+- [x] Ensure returned status matches real backend state.
+- [x] Add integration test for long-running generation behavior.
 - DoD: API contract and frontend polling flow are consistent and test-covered.
 
 ### PA-002 Fix TTS multi-chunk truncation
@@ -229,4 +229,3 @@ Conventions:
 2. `PA-003` Fix file-tree selection
 3. `PA-001` Align podcast create contract
 4. `PA-005` LAN mobile baseline
-

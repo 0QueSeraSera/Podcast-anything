@@ -184,7 +184,7 @@ class TestPodcastRoutes:
             },
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
         assert data["podcast_id"] == "pod1234"
         assert data["status"] == "pending"

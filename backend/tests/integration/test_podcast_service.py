@@ -1,6 +1,8 @@
 """Integration tests for PodcastService orchestration."""
 
+import asyncio
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -235,6 +237,46 @@ class TestPodcastServiceCreatePodcast:
         with pytest.raises(ValueError, match="Repository not found"):
             await service.create_podcast("unknown", [])
 
+    @pytest.mark.asyncio
+    async def test_create_podcast_returns_immediately_for_long_running_job(self):
+        """Create podcast should return pending while background task keeps running."""
+        service = PodcastService.__new__(PodcastService)
+        service.repos = {
+            "test1234": {
+                "name": "test-repo",
+                "path": "/tmp/test",
+                "url": "https://github.com/user/test-repo",
+            }
+        }
+        service.podcasts = {}
+        service._generation_tasks = set()
+
+        generation_started = asyncio.Event()
+        generation_finished = asyncio.Event()
+
+        async def slow_generation(podcast_id: str):
+            generation_started.set()
+            await asyncio.sleep(0.15)
+            service._update_status(podcast_id, JobStatus.COMPLETED, 100)
+            generation_finished.set()
+
+        service._run_generation_task = slow_generation
+
+        start = time.monotonic()
+        result = await service.create_podcast(repo_id="test1234", selected_files=["main.py"])
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 0.1
+        assert result.status == JobStatus.PENDING
+        assert service.podcasts[result.podcast_id]["status"] == JobStatus.PENDING
+
+        await asyncio.wait_for(generation_started.wait(), timeout=0.3)
+        await asyncio.wait_for(generation_finished.wait(), timeout=1.0)
+
+        final_status = await service.get_status(result.podcast_id)
+        assert final_status is not None
+        assert final_status.status == JobStatus.COMPLETED
+
 
 class TestPodcastServiceGetStatus:
     """Tests for get_status method."""
@@ -315,8 +357,12 @@ class TestPodcastServiceErrorPropagation:
 
         result = await service.create_podcast("test1234", [])
 
-        # Check that status was updated to failed
-        podcast = service.podcasts[result.podcast_id]
+        for _ in range(50):
+            podcast = service.podcasts[result.podcast_id]
+            if podcast["status"] == JobStatus.FAILED:
+                break
+            await asyncio.sleep(0.01)
+
         assert podcast["status"] == JobStatus.FAILED
         assert "Script generation failed" in podcast.get("error", "")
 
