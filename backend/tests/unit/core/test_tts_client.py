@@ -258,7 +258,7 @@ async def test_synthesize_skips_invalid_chunk_and_continues(monkeypatch):
         def call(**kwargs):
             chunk = kwargs["text"]
             calls.append(chunk)
-            if "first chunk content" in chunk:
+            if "second chunk content" not in chunk:
                 return _Response(400, "Due to invalid text, invalid audio was returned.")
             return _Response(200, output={"audio": b"AUDIO_OK"})
 
@@ -278,3 +278,37 @@ async def test_synthesize_skips_invalid_chunk_and_continues(monkeypatch):
 
     assert audio == b"AUDIO_OK"
     assert len(calls) >= 2
+
+
+@pytest.mark.asyncio
+async def test_synthesize_concatenates_multiple_successful_chunks(monkeypatch):
+    """Successful multi-chunk synthesis should include every chunk audio payload."""
+
+    class _Response:
+        def __init__(self, audio: bytes):
+            self.status_code = 200
+            self.message = ""
+            self.output = {"audio": audio}
+
+    class _FakeSynthesizer:
+        @staticmethod
+        def call(**kwargs):
+            if kwargs["text"] == "chunk one":
+                return _Response(b"AUDIO_ONE")
+            return _Response(b"AUDIO_TWO")
+
+    _install_fake_dashscope_qwen_tts(monkeypatch, _FakeSynthesizer)
+
+    client = TTSClient.__new__(TTSClient)
+    client.api_key = "test-key"
+    client.model = "test-model"
+    client.voice = "test-voice"
+    monkeypatch.setattr(
+        client,
+        "_split_text",
+        lambda text, max_length=500: ["chunk one", "chunk two"],
+    )
+
+    audio = await client.synthesize("input text")
+
+    assert audio == b"AUDIO_ONEAUDIO_TWO"

@@ -1,10 +1,11 @@
 """Alibaba Cloud DashScope TTS client."""
 
-import asyncio
 import base64
+import io
 import logging
 import re
 import time
+import wave
 from typing import AsyncGenerator, Optional
 
 from app.config import get_settings
@@ -112,8 +113,6 @@ class TTSClient:
                 },
             )
 
-        # For now, return the first segment
-        # In production, concatenate all segments
         logger.info(
             "TTS synthesis completed",
             extra={
@@ -123,7 +122,7 @@ class TTSClient:
         )
         if not audio_segments:
             raise RuntimeError("TTS error: all chunks failed to synthesize")
-        return audio_segments[0]
+        return self._concatenate_audio_segments(audio_segments)
 
     async def synthesize_stream(
         self, text: str
@@ -244,6 +243,68 @@ class TTSClient:
             return audio_bytes
 
         return audio_bytes
+
+    @staticmethod
+    def _is_wav_bytes(audio_bytes: bytes) -> bool:
+        """Check whether payload appears to be RIFF/WAV."""
+        return bool(audio_bytes and audio_bytes.startswith(b"RIFF"))
+
+    def _concatenate_audio_segments(self, audio_segments: list[bytes]) -> bytes:
+        """Concatenate synthesized chunk payloads into one audio blob."""
+        if not audio_segments:
+            raise RuntimeError("No synthesized audio segments to concatenate")
+        if len(audio_segments) == 1:
+            return audio_segments[0]
+
+        all_wav = all(self._is_wav_bytes(segment) for segment in audio_segments)
+        if all_wav:
+            return self._concatenate_wav_segments(audio_segments)
+
+        # Prefer decode/re-encode path so duration metadata reflects full content.
+        try:
+            from pydub import AudioSegment
+
+            combined = AudioSegment.empty()
+            for segment in audio_segments:
+                segment_format = "wav" if self._is_wav_bytes(segment) else "mp3"
+                combined += AudioSegment.from_file(io.BytesIO(segment), format=segment_format)
+
+            output = io.BytesIO()
+            combined.export(output, format="mp3")
+            return output.getvalue()
+        except Exception:
+            logger.warning(
+                "Audio segment decode failed, using raw byte concatenation fallback",
+                extra={"audio_segments": len(audio_segments)},
+            )
+            return b"".join(audio_segments)
+
+    @staticmethod
+    def _concatenate_wav_segments(audio_segments: list[bytes]) -> bytes:
+        """Concatenate WAV byte streams while preserving PCM params."""
+        with wave.open(io.BytesIO(audio_segments[0]), "rb") as first_wav:
+            params = first_wav.getparams()
+            frames = [first_wav.readframes(first_wav.getnframes())]
+
+        for segment in audio_segments[1:]:
+            with wave.open(io.BytesIO(segment), "rb") as wav_file:
+                current = wav_file.getparams()
+                if (
+                    current.nchannels != params.nchannels
+                    or current.sampwidth != params.sampwidth
+                    or current.framerate != params.framerate
+                ):
+                    raise RuntimeError("Incompatible WAV chunk format from TTS provider")
+                frames.append(wav_file.readframes(wav_file.getnframes()))
+
+        output = io.BytesIO()
+        with wave.open(output, "wb") as out_wav:
+            out_wav.setnchannels(params.nchannels)
+            out_wav.setsampwidth(params.sampwidth)
+            out_wav.setframerate(params.framerate)
+            for frame_chunk in frames:
+                out_wav.writeframes(frame_chunk)
+        return output.getvalue()
 
     def _sanitize_text_for_tts(self, text: str) -> str:
         """Remove markdown/noise that commonly breaks TTS requests."""
