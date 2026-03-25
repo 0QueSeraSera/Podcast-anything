@@ -280,3 +280,33 @@ class TestErrorHandling:
         )
 
         assert response.status_code == 422
+
+
+class TestCORSBehavior:
+    """Tests for CORS allowlist behavior."""
+
+    def test_preflight_allows_known_origin(self, client):
+        """Known frontend origin should receive allow-origin header."""
+        response = client.options(
+            "/api/v1/repository/analyze",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+    def test_preflight_blocks_unknown_origin(self, client):
+        """Unknown origin should not receive allow-origin header."""
+        response = client.options(
+            "/api/v1/repository/analyze",
+            headers={
+                "Origin": "https://unknown.example.com",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+        assert response.status_code in (200, 400)
+        assert "access-control-allow-origin" not in response.headers

@@ -24,6 +24,24 @@ def _configure_logging():
         )
 
 
+def _build_cors_options() -> dict:
+    """Build CORS middleware options from environment settings."""
+    if settings.cors_allow_all:
+        return {
+            "allow_origins": ["*"],
+            "allow_credentials": False,
+            "allow_methods": ["*"],
+            "allow_headers": ["*"],
+        }
+
+    return {
+        "allow_origins": settings.cors_allow_origins_list,
+        "allow_credentials": settings.cors_allow_credentials,
+        "allow_methods": settings.cors_allow_methods_list or ["*"],
+        "allow_headers": settings.cors_allow_headers_list or ["*"],
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
@@ -36,6 +54,8 @@ async def lifespan(app: FastAPI):
         extra={
             "temp_dir": settings.temp_dir,
             "audio_output_dir": settings.audio_output_dir,
+            "cors_allow_all": settings.cors_allow_all,
+            "cors_allow_origins": settings.cors_allow_origins_list,
         },
     )
     yield
@@ -51,13 +71,7 @@ app = FastAPI(
 )
 
 # CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, **_build_cors_options())
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
