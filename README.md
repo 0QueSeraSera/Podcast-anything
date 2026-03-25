@@ -37,7 +37,7 @@ cp .env.example .env
 # Edit .env with your API keys
 
 # Run the server
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Setup
@@ -50,10 +50,35 @@ npm install
 
 # Set environment variables
 cp .env.local.example .env.local
+# For desktop-only local dev:
+# NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+# For phone/LAN access (same Wi-Fi), use your machine LAN IP:
+# NEXT_PUBLIC_API_URL=http://<YOUR_LAN_IP>:8000
 
 # Run the development server
 npm run dev
 ```
+
+### LAN Mobile Access Baseline
+
+Use this flow to test from a physical phone on the same network:
+
+1. Start backend with `--host 0.0.0.0` (shown above).
+2. Set `frontend/.env.local` to `NEXT_PUBLIC_API_URL=http://<YOUR_LAN_IP>:8000`.
+3. Start frontend with host binding:
+   - `npm run dev -- --hostname 0.0.0.0 --port 3000`
+4. On phone browser, open `http://<YOUR_LAN_IP>:3000` and run:
+   - analyze repo -> select files -> generate -> play audio.
+
+### CORS Configuration (Non-Dev Hardening)
+
+Backend CORS is environment-driven (no hardcoded wildcard by default):
+
+- `CORS_ALLOW_ALL=false`
+- `CORS_ALLOW_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
+
+For strict/non-dev environments, keep `CORS_ALLOW_ALL=false` and provide an explicit allowlist.
+For local convenience, you can set `CORS_ALLOW_ALL=true`.
 
 ### Using Docker
 
