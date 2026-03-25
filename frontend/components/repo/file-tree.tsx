@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 interface FileNode {
   name: string
@@ -12,46 +12,48 @@ interface FileNode {
 interface FileTreeProps {
   node: FileNode
   selectedFiles: Set<string>
-  onToggle: (path: string) => void
+  onToggleFile: (path: string) => void
+  onToggleDirectory: (paths: string[], select: boolean) => void
   depth?: number
 }
 
-export function FileTree({ node, selectedFiles, onToggle, depth = 0 }: FileTreeProps) {
+export function FileTree({
+  node,
+  selectedFiles,
+  onToggleFile,
+  onToggleDirectory,
+  depth = 0,
+}: FileTreeProps) {
   const [isExpanded, setIsExpanded] = useState(depth < 2)
+  const checkboxRef = useRef<HTMLInputElement>(null)
 
   const isDirectory = node.is_dir
-  const isSelected = selectedFiles.has(node.path)
-  const hasSelectedChildren = isDirectory && node.children?.some((child) =>
-    selectedFiles.has(child.path) || (child.is_dir && hasSelectedDescendants(child, selectedFiles))
+  const descendantFilePaths = useMemo(
+    () => (isDirectory ? getDescendantFilePaths(node) : []),
+    [isDirectory, node]
   )
+  const selectedDescendantCount = descendantFilePaths.filter((path) => selectedFiles.has(path)).length
+  const isPartiallySelected =
+    isDirectory &&
+    selectedDescendantCount > 0 &&
+    selectedDescendantCount < descendantFilePaths.length
+  const isFullySelected =
+    isDirectory &&
+    descendantFilePaths.length > 0 &&
+    selectedDescendantCount === descendantFilePaths.length
+  const isSelected = isDirectory ? isFullySelected : selectedFiles.has(node.path)
 
-  function hasSelectedDescendants(n: FileNode, selected: Set<string>): boolean {
-    if (selected.has(n.path)) return true
-    if (n.children) {
-      return n.children.some((child) => hasSelectedDescendants(child, selected))
+  useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = isPartiallySelected
     }
-    return false
-  }
+  }, [isPartiallySelected])
 
   const handleToggle = () => {
     if (!isDirectory) {
-      onToggle(node.path)
+      onToggleFile(node.path)
     } else {
-      // Toggle all children
-      toggleAllChildren(node, !hasSelectedChildren)
-    }
-  }
-
-  const toggleAllChildren = (n: FileNode, select: boolean) => {
-    if (!n.is_dir) {
-      if (select) {
-        selectedFiles.add(n.path)
-      } else {
-        selectedFiles.delete(n.path)
-      }
-      onToggle(n.path) // Trigger re-render
-    } else if (n.children) {
-      n.children.forEach((child) => toggleAllChildren(child, select))
+      onToggleDirectory(descendantFilePaths, !isFullySelected)
     }
   }
 
@@ -59,7 +61,7 @@ export function FileTree({ node, selectedFiles, onToggle, depth = 0 }: FileTreeP
     <div style={{ paddingLeft: depth * 16 }}>
       <div
         className={`flex items-center gap-2 rounded px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 ${
-          (isSelected || hasSelectedChildren) ? 'bg-primary-50 dark:bg-primary-900/20' : ''
+          (isSelected || isPartiallySelected) ? 'bg-primary-50 dark:bg-primary-900/20' : ''
         }`}
       >
         {isDirectory && (
@@ -82,8 +84,10 @@ export function FileTree({ node, selectedFiles, onToggle, depth = 0 }: FileTreeP
         </button>
 
         <input
+          ref={checkboxRef}
           type="checkbox"
-          checked={isSelected || hasSelectedChildren}
+          aria-label={`Select ${node.path}`}
+          checked={isSelected}
           onChange={handleToggle}
           className="h-4 w-4 rounded border-slate-300"
         />
@@ -91,18 +95,15 @@ export function FileTree({ node, selectedFiles, onToggle, depth = 0 }: FileTreeP
 
       {isDirectory && isExpanded && node.children && (
         <div className="mt-1">
-          {node.children
-            .sort((a, b) => {
-              // Directories first, then alphabetically
-              if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-              return a.name.localeCompare(b.name)
-            })
+          {[...node.children]
+            .sort(sortNodes)
             .map((child) => (
               <FileTree
                 key={child.path}
                 node={child}
                 selectedFiles={selectedFiles}
-                onToggle={onToggle}
+                onToggleFile={onToggleFile}
+                onToggleDirectory={onToggleDirectory}
                 depth={depth + 1}
               />
             ))}
@@ -133,4 +134,17 @@ function getFileIcon(filename: string): string {
     php: '🐘',
   }
   return icons[ext || ''] || '📄'
+}
+
+function sortNodes(a: FileNode, b: FileNode): number {
+  if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
+  return a.name.localeCompare(b.name)
+}
+
+function getDescendantFilePaths(node: FileNode): string[] {
+  if (!node.is_dir) return [node.path]
+  if (!node.children || node.children.length === 0) return []
+  return [...node.children]
+    .sort(sortNodes)
+    .flatMap((child) => getDescendantFilePaths(child))
 }

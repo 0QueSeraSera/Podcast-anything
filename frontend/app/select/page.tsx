@@ -81,6 +81,20 @@ export default function SelectPage() {
     })
   }
 
+  const handleToggleDirectory = (paths: string[], select: boolean) => {
+    setSelectedFiles((prev) => {
+      const next = new Set(prev)
+      paths.forEach((path) => {
+        if (select) {
+          next.add(path)
+        } else {
+          next.delete(path)
+        }
+      })
+      return next
+    })
+  }
+
   const handleSendScopeMessage = () => {
     const trimmed = scopeInput.trim()
     if (!trimmed) return
@@ -155,7 +169,8 @@ export default function SelectPage() {
             <FileTree
               node={fileTree}
               selectedFiles={selectedFiles}
-              onToggle={handleToggleFile}
+              onToggleFile={handleToggleFile}
+              onToggleDirectory={handleToggleDirectory}
             />
           ) : (
             <p className="text-slate-500">No files found</p>

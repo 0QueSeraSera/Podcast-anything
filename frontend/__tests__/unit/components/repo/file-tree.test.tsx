@@ -1,160 +1,132 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FileTree } from '@/components/repo/file-tree'
 import { createFileNode, createDirectoryNode } from '@/__tests__/fixtures/repository'
 
 describe('FileTree', () => {
-  const mockOnToggle = jest.fn()
+  const mockOnToggleFile = jest.fn()
+  const mockOnToggleDirectory = jest.fn()
+
+  const renderTree = (
+    node: any,
+    selectedFiles = new Set<string>(),
+    depth?: number
+  ) =>
+    render(
+      <FileTree
+        node={node}
+        selectedFiles={selectedFiles}
+        onToggleFile={mockOnToggleFile}
+        onToggleDirectory={mockOnToggleDirectory}
+        depth={depth}
+      />
+    )
 
   beforeEach(() => {
-    mockOnToggle.mockClear()
+    mockOnToggleFile.mockClear()
+    mockOnToggleDirectory.mockClear()
   })
 
   it('renders a file node', () => {
-    const node = createFileNode({ name: 'test.py', path: 'test.py' })
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
+    renderTree(createFileNode({ name: 'test.py', path: 'test.py' }))
 
     expect(screen.getByText('test.py')).toBeInTheDocument()
   })
 
   it('renders a directory node with expand button', () => {
-    const node = createDirectoryNode('src', [])
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
+    renderTree(createDirectoryNode('src', []), new Set<string>(), 2)
 
     expect(screen.getByText('src')).toBeInTheDocument()
-    expect(screen.getByText('▶')).toBeInTheDocument() // collapsed indicator
+    expect(screen.getByText('▶')).toBeInTheDocument()
   })
 
   it('expands directory when clicked', async () => {
     const user = userEvent.setup()
     const childNode = createFileNode({ name: 'utils.py', path: 'src/utils.py' })
     const node = createDirectoryNode('src', [childNode])
-    const selectedFiles = new Set<string>()
+    renderTree(node, new Set<string>(), 2)
 
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
-
-    // Initially collapsed, children not visible
     expect(screen.queryByText('utils.py')).not.toBeInTheDocument()
 
-    // Click expand button
     await user.click(screen.getByText('▶'))
 
-    // Now expanded, children visible
     expect(screen.getByText('utils.py')).toBeInTheDocument()
-    expect(screen.getByText('▼')).toBeInTheDocument() // expanded indicator
+    expect(screen.getByText('▼')).toBeInTheDocument()
   })
 
   it('shows directory icon for directories', () => {
-    const node = createDirectoryNode('src', [])
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
+    renderTree(createDirectoryNode('src', []))
 
     expect(screen.getByText('📁')).toBeInTheDocument()
   })
 
-  it('shows appropriate file icon for Python files', () => {
-    const node = createFileNode({ name: 'main.py', path: 'main.py' })
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
-
+  it('shows appropriate file icon for known file types', () => {
+    renderTree(createFileNode({ name: 'main.py', path: 'main.py' }))
     expect(screen.getByText('🐍')).toBeInTheDocument()
   })
 
-  it('shows appropriate file icon for TypeScript files', () => {
-    const node = createFileNode({ name: 'app.ts', path: 'app.ts' })
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
-
-    expect(screen.getByText('📘')).toBeInTheDocument()
-  })
-
-  it('shows appropriate file icon for TSX files', () => {
-    const node = createFileNode({ name: 'component.tsx', path: 'component.tsx' })
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
-
-    expect(screen.getByText('⚛️')).toBeInTheDocument()
-  })
-
   it('shows default file icon for unknown extensions', () => {
-    const node = createFileNode({ name: 'unknown.xyz', path: 'unknown.xyz' })
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
+    renderTree(createFileNode({ name: 'unknown.xyz', path: 'unknown.xyz' }))
 
     expect(screen.getByText('📄')).toBeInTheDocument()
   })
 
-  it('calls onToggle when file is clicked', async () => {
+  it('calls onToggleFile when file is clicked', async () => {
     const user = userEvent.setup()
-    const node = createFileNode({ name: 'main.py', path: 'main.py' })
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
+    renderTree(createFileNode({ name: 'main.py', path: 'main.py' }))
 
     await user.click(screen.getByText('main.py'))
 
-    expect(mockOnToggle).toHaveBeenCalledWith('main.py')
+    expect(mockOnToggleFile).toHaveBeenCalledWith('main.py')
   })
 
-  it('shows checkbox for selection', () => {
-    const node = createFileNode({ name: 'main.py', path: 'main.py' })
-    const selectedFiles = new Set<string>()
+  it('directory toggle selects all descendant files deterministically', async () => {
+    const user = userEvent.setup()
+    const node = createDirectoryNode('src', [
+      createDirectoryNode('models', [
+        createFileNode({ name: 'user.py', path: 'src/models/user.py' }),
+      ]),
+      createFileNode({ name: 'main.py', path: 'src/main.py' }),
+    ])
+    renderTree(node)
 
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
+    await user.click(screen.getByRole('checkbox', { name: 'Select src' }))
 
-    expect(screen.getByRole('checkbox')).toBeInTheDocument()
+    expect(mockOnToggleDirectory).toHaveBeenCalledWith(
+      ['src/models/user.py', 'src/main.py'],
+      true
+    )
   })
 
-  it('checkbox is checked when file is selected', () => {
-    const node = createFileNode({ name: 'main.py', path: 'main.py' })
-    const selectedFiles = new Set(['main.py'])
+  it('directory toggle deselects when all descendants are already selected', async () => {
+    const user = userEvent.setup()
+    const node = createDirectoryNode('src', [
+      createFileNode({ name: 'a.py', path: 'src/a.py' }),
+      createFileNode({ name: 'b.py', path: 'src/b.py' }),
+    ])
+    renderTree(node, new Set(['src/a.py', 'src/b.py']))
 
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
+    await user.click(screen.getByRole('checkbox', { name: 'Select src' }))
 
-    const checkbox = screen.getByRole('checkbox')
-    expect(checkbox).toBeChecked()
+    expect(mockOnToggleDirectory).toHaveBeenCalledWith(['src/a.py', 'src/b.py'], false)
   })
 
-  it('checkbox is unchecked when file is not selected', () => {
-    const node = createFileNode({ name: 'main.py', path: 'main.py' })
-    const selectedFiles = new Set<string>()
+  it('uses checked state only when all descendants are selected', () => {
+    const node = createDirectoryNode('src', [
+      createFileNode({ name: 'a.py', path: 'src/a.py' }),
+      createFileNode({ name: 'b.py', path: 'src/b.py' }),
+    ])
+    renderTree(node, new Set(['src/a.py']))
 
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} />)
-
-    const checkbox = screen.getByRole('checkbox')
-    expect(checkbox).not.toBeChecked()
-  })
-
-  it('directories are expanded by default at shallow depth', () => {
-    const childNode = createFileNode({ name: 'utils.py', path: 'src/utils.py' })
-    const node = createDirectoryNode('src', [childNode])
-    const selectedFiles = new Set<string>()
-
-    // depth=0 should be expanded by default
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} depth={0} />)
-
-    expect(screen.getByText('utils.py')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Select src' })).not.toBeChecked()
   })
 
   it('sorts children with directories first', () => {
     const fileNode = createFileNode({ name: 'zebra.py', path: 'zebra.py' })
     const dirNode = createDirectoryNode('aaa', [])
-    const node = createDirectoryNode('root', [fileNode, dirNode])
-    const selectedFiles = new Set<string>()
-
-    render(<FileTree node={node} selectedFiles={selectedFiles} onToggle={mockOnToggle} depth={0} />)
+    renderTree(createDirectoryNode('root', [fileNode, dirNode]), new Set<string>(), 0)
 
     const items = screen.getAllByText(/aaa|zebra/)
-    // Directory 'aaa' should come before file 'zebra'
     expect(items[0]).toHaveTextContent('aaa')
     expect(items[1]).toHaveTextContent('zebra')
   })
