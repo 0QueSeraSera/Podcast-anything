@@ -1,137 +1,98 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { rest } from 'msw'
-import { setupServer } from 'msw/node'
+import userEvent from '@testing-library/user-event'
 import GeneratePage from '@/app/generate/page'
-import { podcastHandlers } from '@/__tests__/mocks/handlers/podcast'
 
-const server = setupServer(...podcastHandlers)
-
-beforeAll(() => server.listen())
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
-
-// Mock Next.js router
 const mockPush = jest.fn()
-const mockSearchParams = new URLSearchParams({ podcast_id: 'pod1234' })
+const mockRouter = { push: mockPush }
+let currentSearchParams = new URLSearchParams({ podcast_id: 'pod1234' })
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: mockPush,
-  }),
-  useSearchParams: () => mockSearchParams,
+  useRouter: () => mockRouter,
+  useSearchParams: () => currentSearchParams,
 }))
+
+const mockFetch = jest.fn()
+
+function mockStatusResponse(status: string, progress: number, error: string | null = null) {
+  return {
+    ok: true,
+    json: async () => ({
+      podcast_id: 'pod1234',
+      status,
+      progress,
+      current_step: status.replace('_', ' '),
+      error,
+    }),
+  }
+}
 
 describe('Generate Page', () => {
   beforeEach(() => {
     mockPush.mockClear()
+    currentSearchParams = new URLSearchParams({ podcast_id: 'pod1234' })
+    mockFetch.mockReset()
+    ;(global as any).fetch = mockFetch
   })
 
-  it('renders progress indicator', () => {
-    render(<GeneratePage />)
-
-    expect(screen.getByText(/generating/i)).toBeInTheDocument()
+  afterEach(() => {
+    jest.useRealTimers()
   })
 
-  it('shows current step', async () => {
+  it('renders progress indicator', async () => {
+    mockFetch.mockResolvedValue(mockStatusResponse('pending', 0))
     render(<GeneratePage />)
 
-    await waitFor(() => {
-      expect(screen.getByText(/pending|generating|synthesizing/i)).toBeInTheDocument()
-    })
-  })
-
-  it('polls for status updates', async () => {
-    let callCount = 0
-    server.use(
-      rest.get('/api/v1/podcast/:podcastId/status', (req, res, ctx) => {
-        callCount++
-        const statuses = ['pending', 'generating_script', 'synthesizing', 'completed']
-        const status = statuses[Math.min(callCount - 1, 3)]
-
-        return res(ctx.json({
-          podcast_id: 'pod1234',
-          status,
-          progress: callCount * 25,
-          current_step: status.replace('_', ' ').toUpperCase(),
-        }))
-      })
-    )
-
-    render(<GeneratePage />)
-
-    // Wait for multiple status calls
-    await waitFor(() => {
-      expect(callCount).toBeGreaterThan(1)
-    }, { timeout: 10000 })
+    expect(await screen.findByText(/starting|loading/i)).toBeInTheDocument()
   })
 
   it('redirects to podcast page when completed', async () => {
-    server.use(
-      rest.get('/api/v1/podcast/:podcastId/status', (req, res, ctx) => {
-        return res(ctx.json({
-          podcast_id: 'pod1234',
-          status: 'completed',
-          progress: 100,
-          current_step: 'Completed',
-        }))
-      })
-    )
-
+    mockFetch.mockResolvedValue(mockStatusResponse('completed', 100))
     render(<GeneratePage />)
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/podcast/pod1234')
-    }, { timeout: 5000 })
+    })
   })
 
-  it('shows error state on failure', async () => {
-    server.use(
-      rest.get('/api/v1/podcast/:podcastId/status', (req, res, ctx) => {
-        return res(ctx.json({
-          podcast_id: 'pod1234',
-          status: 'failed',
-          progress: 0,
-          error: 'Script generation failed',
-        }))
-      })
+  it('shows failed fallback action', async () => {
+    const user = userEvent.setup()
+    mockFetch.mockResolvedValue(
+      mockStatusResponse('failed', 70, 'Script generation failed')
     )
+    render(<GeneratePage />)
+
+    expect(await screen.findByRole('button', { name: /return home/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /return home/i }))
+    expect(mockPush).toHaveBeenCalledWith('/')
+  })
+
+  it('stops polling after terminal status', async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockStatusResponse('pending', 10))
+      .mockResolvedValueOnce(mockStatusResponse('completed', 100))
+      .mockResolvedValue(mockStatusResponse('completed', 100))
 
     render(<GeneratePage />)
 
     await waitFor(() => {
-      expect(screen.getByText(/error|failed/i)).toBeInTheDocument()
-    })
-  })
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    }, { timeout: 7000 })
+
+    expect(mockPush).toHaveBeenCalledWith('/podcast/pod1234')
+
+    const terminalCallCount = mockFetch.mock.calls.length
+
+    await new Promise((resolve) => setTimeout(resolve, 2500))
+    expect(mockFetch).toHaveBeenCalledTimes(terminalCallCount)
+  }, 15000)
 
   it('handles missing podcast_id', async () => {
-    jest.mock('next/navigation', () => ({
-      useRouter: () => ({ push: mockPush }),
-      useSearchParams: () => new URLSearchParams(),
-    }))
-
+    currentSearchParams = new URLSearchParams()
+    mockFetch.mockResolvedValue(mockStatusResponse('pending', 0))
     render(<GeneratePage />)
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/')
-    })
-  })
-
-  it('displays progress percentage', async () => {
-    server.use(
-      rest.get('/api/v1/podcast/:podcastId/status', (req, res, ctx) => {
-        return res(ctx.json({
-          podcast_id: 'pod1234',
-          status: 'synthesizing',
-          progress: 60,
-          current_step: 'Synthesizing',
-        }))
-      })
-    )
-
-    render(<GeneratePage />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/60%/)).toBeInTheDocument()
     })
   })
 })

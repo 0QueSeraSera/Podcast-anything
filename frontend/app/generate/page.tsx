@@ -33,6 +33,16 @@ export default function GeneratePage() {
       return
     }
 
+    let pollInterval: ReturnType<typeof setInterval> | null = null
+    let isUnmounted = false
+
+    const stopPolling = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval)
+        pollInterval = null
+      }
+    }
+
     const pollStatus = async () => {
       try {
         const response = await fetch(
@@ -40,10 +50,16 @@ export default function GeneratePage() {
         )
         if (response.ok) {
           const data = await response.json()
+          if (isUnmounted) return
           setStatus(data)
 
           if (data.status === 'completed') {
+            stopPolling()
             router.push(`/podcast/${podcastId}`)
+            return
+          }
+          if (data.status === 'failed') {
+            stopPolling()
           }
         }
       } catch (error) {
@@ -52,9 +68,12 @@ export default function GeneratePage() {
     }
 
     pollStatus()
-    const interval = setInterval(pollStatus, 2000)
+    pollInterval = setInterval(pollStatus, 2000)
 
-    return () => clearInterval(interval)
+    return () => {
+      isUnmounted = true
+      stopPolling()
+    }
   }, [podcastId, router])
 
   return (
@@ -85,6 +104,20 @@ export default function GeneratePage() {
         {status?.error && (
           <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
             {status.error}
+          </div>
+        )}
+
+        {status?.status === 'failed' && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Generation ended with an error.
+            </p>
+            <button
+              onClick={() => router.push('/')}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+            >
+              Return Home
+            </button>
           </div>
         )}
       </div>
