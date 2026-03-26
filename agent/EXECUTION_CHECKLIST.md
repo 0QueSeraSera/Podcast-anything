@@ -25,35 +25,35 @@ Conventions:
 - Priority: `P0`
 - Effort: `M`
 - Depends on: none
-- [ ] Concatenate all successful TTS chunks (instead of returning first chunk only).
-- [ ] Preserve duration/chapter correctness after fix.
-- [ ] Add unit tests for 2+ chunk synthesis output.
+- [x] Concatenate all successful TTS chunks (instead of returning first chunk only).
+- [x] Preserve duration/chapter correctness after fix.
+- [x] Add unit tests for 2+ chunk synthesis output.
 - DoD: long scripts generate full audio content end-to-end.
 
 ### PA-003 Fix file-tree directory selection logic
 - Priority: `P0`
 - Effort: `S`
 - Depends on: none
-- [ ] Remove direct mutation of `selectedFiles` in child component.
-- [ ] Implement deterministic directory select/deselect behavior.
-- [ ] Add unit tests for folder toggle with nested files.
+- [x] Remove direct mutation of `selectedFiles` in child component.
+- [x] Implement deterministic directory select/deselect behavior.
+- [x] Add unit tests for folder toggle with nested files.
 - DoD: folder selection is stable and reproducible in UI tests.
 
 ### PA-004 Stop unnecessary status polling on terminal states
 - Priority: `P0`
 - Effort: `S`
 - Depends on: `PA-001`
-- [ ] Stop polling when status is `completed` or `failed`.
-- [ ] Add UI fallback action for `failed` (retry or return).
-- [ ] Add integration test validating poll stop behavior.
+- [x] Stop polling when status is `completed` or `failed`.
+- [x] Add UI fallback action for `failed` (retry or return).
+- [x] Add integration test validating poll stop behavior.
 - DoD: no repeated requests after terminal state.
 
 ### PA-005 LAN mobile access setup
 - Priority: `P0`
 - Effort: `S`
 - Depends on: none
-- [ ] Add run instructions for backend on `0.0.0.0`.
-- [ ] Add frontend env guidance for phone-accessible API URL.
+- [x] Add run instructions for backend on `0.0.0.0`.
+- [x] Add frontend env guidance for phone-accessible API URL.
 - [ ] Verify flow from physical phone on same network.
 - DoD: analyze -> generate -> play works from mobile browser.
 
@@ -61,18 +61,18 @@ Conventions:
 - Priority: `P0`
 - Effort: `S`
 - Depends on: `PA-005`
-- [ ] Replace wildcard CORS with env-based allowlist.
-- [ ] Keep dev convenience mode configurable.
-- [ ] Add config docs in README.
+- [x] Replace wildcard CORS with env-based allowlist.
+- [x] Keep dev convenience mode configurable.
+- [x] Add config docs in README.
 - DoD: known origins pass; unknown origins blocked in non-dev mode.
 
 ### PA-007 P0 regression test pass
 - Priority: `P0`
 - Effort: `M`
 - Depends on: `PA-001`..`PA-006`
-- [ ] Run backend unit/integration tests.
-- [ ] Run frontend unit/integration tests.
-- [ ] Run one full-stack E2E happy path.
+- [x] Run backend unit/integration tests.
+- [x] Run frontend unit/integration tests.
+- [x] Run one full-stack E2E happy path.
 - DoD: all critical tests green with no new flaky failures.
 
 ---

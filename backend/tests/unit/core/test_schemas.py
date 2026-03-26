@@ -157,20 +157,30 @@ class TestPodcastStatusResponse:
 
     def test_progress_range_validation(self):
         """Progress should be validated to be between 0 and 100."""
+        from datetime import datetime
+
+        now = datetime.utcnow()
         # Valid progress
         response = PodcastStatusResponse(
             podcast_id="abc123",
             status=JobStatus.PENDING,
             progress=50.0,
+            created_at=now,
+            updated_at=now,
         )
         assert response.progress == 50.0
 
     def test_progress_at_boundaries(self):
         """Progress at boundaries (0 and 100) should be valid."""
+        from datetime import datetime
+
+        now = datetime.utcnow()
         response_min = PodcastStatusResponse(
             podcast_id="abc123",
             status=JobStatus.PENDING,
             progress=0.0,
+            created_at=now,
+            updated_at=now,
         )
         assert response_min.progress == 0.0
 
@@ -178,6 +188,8 @@ class TestPodcastStatusResponse:
             podcast_id="abc123",
             status=JobStatus.COMPLETED,
             progress=100.0,
+            created_at=now,
+            updated_at=now,
         )
         assert response_max.progress == 100.0
 

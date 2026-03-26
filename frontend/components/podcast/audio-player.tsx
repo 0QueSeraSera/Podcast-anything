@@ -89,7 +89,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement, AudioPlayerProps>(
 
     return (
       <div className="rounded-xl bg-white p-6 shadow-sm dark:bg-slate-800">
-        <audio ref={audioRef} src={audioUrl} preload="metadata" />
+        <audio ref={audioRef} src={audioUrl} preload="metadata" aria-label="Podcast audio" />
 
         {/* Progress bar */}
         <div className="mb-6">
@@ -99,6 +99,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement, AudioPlayerProps>(
             max={duration || 100}
             value={currentTime}
             onChange={handleSeek}
+            aria-label="Seek audio position"
             className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-700 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary-500"
           />
           <div className="mt-2 flex justify-between text-sm text-slate-500">
@@ -111,6 +112,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement, AudioPlayerProps>(
         <div className="flex items-center justify-center gap-4">
           <button
             onClick={() => skipForward(-10)}
+            aria-label="Skip backward 10 seconds"
             className="rounded-full p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -120,6 +122,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement, AudioPlayerProps>(
 
           <button
             onClick={togglePlayPause}
+            aria-label={isPlaying ? 'Pause' : 'Play'}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600"
           >
             {isPlaying ? (
@@ -136,6 +139,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement, AudioPlayerProps>(
 
           <button
             onClick={() => skipForward(30)}
+            aria-label="Skip forward 30 seconds"
             className="rounded-full p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

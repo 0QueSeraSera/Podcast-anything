@@ -2,26 +2,12 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AudioPlayer } from '@/components/podcast/audio-player'
 
-// Mock ref for audio element
-const mockAudioRef = {
-  current: {
-    play: jest.fn().mockResolvedValue(undefined),
-    pause: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    currentTime: 0,
-    duration: 100,
-    playbackRate: 1,
-  },
-}
-
 describe('AudioPlayer', () => {
   const mockOnTimeUpdate = jest.fn()
   const mockOnSpeedChange = jest.fn()
 
   beforeEach(() => {
     jest.clearAllMocks()
-    mockAudioRef.current.currentTime = 0
   })
 
   it('renders play button', () => {
@@ -105,7 +91,7 @@ describe('AudioPlayer', () => {
       />
     )
 
-    expect(screen.getByRole('audio')).toBeInTheDocument()
+    expect(screen.getByLabelText(/podcast audio/i)).toBeInTheDocument()
   })
 
   it('renders speed control', () => {
@@ -137,8 +123,8 @@ describe('AudioPlayer', () => {
       />
     )
 
-    // Initial time should be 0:00
-    expect(screen.getByText('0:00')).toBeInTheDocument()
+    // Initial current and duration fields should both render
+    expect(screen.getAllByText('0:00').length).toBeGreaterThanOrEqual(1)
   })
 
   it('toggles play/pause when play button is clicked', async () => {

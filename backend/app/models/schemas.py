@@ -2,7 +2,7 @@
 
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
@@ -20,7 +20,7 @@ class JobStatus(str, Enum):
 
 class AnalyzeRequest(BaseModel):
     """Request to analyze a GitHub repository."""
-    url: str = Field(..., description="GitHub repository URL")
+    url: str = Field(..., min_length=1, description="GitHub repository URL")
 
 
 class AnalyzeResponse(BaseModel):

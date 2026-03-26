@@ -180,8 +180,8 @@ class TestAudioProcessorTextParts:
     def test_text_parts_include_sections(self):
         """Text parts should include all sections."""
         sections = [
-            ScriptSection(1, "A", "Content A", 60),
-            ScriptSection(2, "B", "Content B", 60),
+            ScriptSection(chapter_id=1, title="A", content="Content A", estimated_duration=60),
+            ScriptSection(chapter_id=2, title="B", content="Content B", estimated_duration=60),
         ]
         script = GeneratedScript(
             repo_name="test",

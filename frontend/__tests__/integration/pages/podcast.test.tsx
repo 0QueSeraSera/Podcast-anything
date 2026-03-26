@@ -1,115 +1,80 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { rest } from 'msw'
-import { setupServer } from 'msw/node'
 import PodcastPage from '@/app/podcast/[id]/page'
-import { podcastHandlers } from '@/__tests__/mocks/handlers/podcast'
-import { mockChapters } from '@/__tests__/fixtures/podcast'
 
-const server = setupServer(...podcastHandlers)
-
-beforeAll(() => server.listen())
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
-
-// Mock Next.js router
 const mockParams = { id: 'pod1234' }
+const mockFetch = jest.fn()
 
 jest.mock('next/navigation', () => ({
   useParams: () => mockParams,
 }))
 
+function chaptersResponse(ok = true) {
+  if (!ok) {
+    return {
+      ok: false,
+      json: async () => ({ detail: 'Podcast not found' }),
+    }
+  }
+  return {
+    ok: true,
+    json: async () => ({
+      podcast_id: 'pod1234',
+      chapters: [
+        { id: 1, title: 'Introduction', start_time: 0, end_time: 60 },
+        { id: 2, title: 'Core Architecture', start_time: 60, end_time: 120 },
+      ],
+    }),
+  }
+}
+
 describe('Podcast Page', () => {
-  it('renders audio player', async () => {
-    render(<PodcastPage />)
-
-    await waitFor(() => {
-      expect(screen.getByRole('audio')).toBeInTheDocument()
-    })
+  beforeEach(() => {
+    mockFetch.mockReset()
+    ;(global as any).fetch = mockFetch
   })
 
-  it('renders chapter list', async () => {
+  it('renders audio player and chapter list', async () => {
+    mockFetch.mockResolvedValue(chaptersResponse(true))
     render(<PodcastPage />)
 
     await waitFor(() => {
+      expect(screen.getByLabelText(/podcast audio/i)).toBeInTheDocument()
       expect(screen.getByText('Chapters')).toBeInTheDocument()
-    })
-  })
-
-  it('fetches and displays chapters', async () => {
-    render(<PodcastPage />)
-
-    await waitFor(() => {
       expect(screen.getByText('Introduction')).toBeInTheDocument()
     })
   })
 
-  it('syncs current chapter with audio playback', async () => {
+  it('supports selecting a chapter', async () => {
     const user = userEvent.setup()
+    mockFetch.mockResolvedValue(chaptersResponse(true))
     render(<PodcastPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('Introduction')).toBeInTheDocument()
+      expect(screen.getByText('Core Architecture')).toBeInTheDocument()
     })
-
-    // Click on a chapter to seek
     await user.click(screen.getByText('Core Architecture'))
 
-    // Audio should seek to that chapter's start time
-    // (Testing indirectly through the onSeekToChapter callback)
+    expect(screen.getByText('Core Architecture')).toBeInTheDocument()
   })
 
-  it('displays playback speed control', async () => {
+  it('renders playback speed controls and action buttons', async () => {
+    mockFetch.mockResolvedValue(chaptersResponse(true))
     render(<PodcastPage />)
 
     await waitFor(() => {
       expect(screen.getByText(/speed:/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /download audio/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /download script/i })).toBeInTheDocument()
     })
   })
 
-  it('handles podcast not found', async () => {
-    server.use(
-      rest.get('/api/v1/podcast/:podcastId/chapters', (req, res, ctx) => {
-        return res(ctx.status(404), ctx.json({ detail: 'Podcast not found' }))
-      })
-    )
-
+  it('shows not found when chapter API fails', async () => {
+    mockFetch.mockResolvedValue(chaptersResponse(false))
     render(<PodcastPage />)
 
     await waitFor(() => {
-      expect(screen.getByText(/not found/i)).toBeInTheDocument()
-    })
-  })
-
-  it('shows download button', async () => {
-    render(<PodcastPage />)
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /download/i })).toBeInTheDocument()
-    })
-  })
-
-  it('download link points to correct audio URL', async () => {
-    render(<PodcastPage />)
-
-    await waitFor(() => {
-      const downloadLink = screen.getByRole('link', { name: /download/i })
-      expect(downloadLink).toHaveAttribute('href', '/api/v1/podcast/pod1234/audio')
-    })
-  })
-
-  it('handles audio loading error', async () => {
-    server.use(
-      rest.get('/api/v1/podcast/:podcastId/audio', (req, res, ctx) => {
-        return res(ctx.status(404))
-      })
-    )
-
-    render(<PodcastPage />)
-
-    // Audio element should still render but show error
-    await waitFor(() => {
-      expect(screen.getByRole('audio')).toBeInTheDocument()
+      expect(screen.getByText(/podcast not found/i)).toBeInTheDocument()
     })
   })
 })

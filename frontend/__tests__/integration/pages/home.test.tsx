@@ -1,114 +1,107 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { rest } from 'msw'
-import { setupServer } from 'msw/node'
 import Home from '@/app/page'
-import { repositoryHandlers } from '@/__tests__/mocks/handlers/repository'
 
-const server = setupServer(...repositoryHandlers)
-
-beforeAll(() => server.listen())
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
-
-// Mock Next.js router
 const mockPush = jest.fn()
+const mockRouter = { push: mockPush }
+const mockFetch = jest.fn()
+
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: mockPush,
-  }),
+  useRouter: () => mockRouter,
 }))
 
 describe('Home Page', () => {
   beforeEach(() => {
-    mockPush.mockClear()
+    mockPush.mockReset()
+    mockFetch.mockReset()
+    ;(global as any).fetch = mockFetch
   })
 
-  it('renders the main heading', () => {
+  it('renders heading and URL input', () => {
     render(<Home />)
 
-    expect(screen.getByText(/podcast anything/i)).toBeInTheDocument()
-  })
-
-  it('renders the URL input component', () => {
-    render(<Home />)
-
+    expect(screen.getByText(/podcast-anything/i)).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/github.com\/user\/repository/i)).toBeInTheDocument()
-  })
-
-  it('renders the analyze button', () => {
-    render(<Home />)
-
     expect(screen.getByRole('button', { name: /analyze/i })).toBeInTheDocument()
   })
 
   it('navigates to select page after successful analysis', async () => {
     const user = userEvent.setup()
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ repo_id: 'test1234', name: 'test-repo' }),
+    })
+
     render(<Home />)
 
-    const input = screen.getByPlaceholderText(/github.com\/user\/repository/i)
-    await user.type(input, 'https://github.com/user/repo')
-
-    const button = screen.getByRole('button', { name: /analyze/i })
-    await user.click(button)
+    await user.type(
+      screen.getByPlaceholderText(/github.com\/user\/repository/i),
+      'https://github.com/user/repo'
+    )
+    await user.click(screen.getByRole('button', { name: /analyze/i }))
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith('/select?repo_id=test1234')
+      expect(mockPush).toHaveBeenCalledWith('/select?repo_id=test1234&name=test-repo')
     })
   })
 
-  it('shows error message for invalid GitHub URL', async () => {
+  it('disables analyze button for non-github URL', async () => {
     const user = userEvent.setup()
     render(<Home />)
 
-    const input = screen.getByPlaceholderText(/github.com\/user\/repository/i)
-    await user.type(input, 'https://gitlab.com/user/repo')
+    await user.type(
+      screen.getByPlaceholderText(/github.com\/user\/repository/i),
+      'https://gitlab.com/user/repo'
+    )
 
-    // Button should be disabled for non-GitHub URLs
-    const button = screen.getByRole('button', { name: /analyze/i })
-    expect(button).toBeDisabled()
+    expect(screen.getByRole('button', { name: /analyze/i })).toBeDisabled()
   })
 
-  it('shows loading state during analysis', async () => {
-    // Delay the response
-    server.use(
-      rest.post('/api/v1/repository/analyze', async (req, res, ctx) => {
-        await new Promise(resolve => setTimeout(resolve, 500))
-        return res(ctx.json({ repo_id: 'test1234', name: 'test-repo', file_count: 10 }))
+  it('shows loading state while analyzing', async () => {
+    const user = userEvent.setup()
+    let resolveFetch: ((value: unknown) => void) | null = null
+    mockFetch.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve
       })
     )
 
-    const user = userEvent.setup()
     render(<Home />)
 
-    const input = screen.getByPlaceholderText(/github.com\/user\/repository/i)
-    await user.type(input, 'https://github.com/user/repo')
-
-    const button = screen.getByRole('button', { name: /analyze/i })
-    await user.click(button)
-
-    // Check for loading state
-    expect(button).toBeDisabled()
-  })
-
-  it('handles API error gracefully', async () => {
-    server.use(
-      rest.post('/api/v1/repository/analyze', (req, res, ctx) => {
-        return res(ctx.status(500), ctx.json({ detail: 'Server error' }))
-      })
+    await user.type(
+      screen.getByPlaceholderText(/github.com\/user\/repository/i),
+      'https://github.com/user/repo'
     )
-
-    const user = userEvent.setup()
-    render(<Home />)
-
-    const input = screen.getByPlaceholderText(/github.com\/user\/repository/i)
-    await user.type(input, 'https://github.com/user/repo')
-
     const button = screen.getByRole('button', { name: /analyze/i })
     await user.click(button)
+    expect(button).toBeDisabled()
 
-    // Should not navigate on error
+    resolveFetch?.({
+      ok: true,
+      json: async () => ({ repo_id: 'test1234', name: 'test-repo' }),
+    })
     await waitFor(() => {
+      expect(mockPush).toHaveBeenCalled()
+    })
+  })
+
+  it('shows API errors and does not navigate', async () => {
+    const user = userEvent.setup()
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ detail: 'Server error' }),
+    })
+
+    render(<Home />)
+
+    await user.type(
+      screen.getByPlaceholderText(/github.com\/user\/repository/i),
+      'https://github.com/user/repo'
+    )
+    await user.click(screen.getByRole('button', { name: /analyze/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/server error/i)).toBeInTheDocument()
       expect(mockPush).not.toHaveBeenCalled()
     })
   })
