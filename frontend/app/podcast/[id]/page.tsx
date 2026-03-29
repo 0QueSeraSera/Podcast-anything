@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { AudioPlayer } from '@/components/podcast/audio-player'
 import { ChapterList } from '@/components/podcast/chapter-list'
+import { ChatPanel } from '@/components/podcast/chat-panel'
 
 interface Chapter {
   id: number
@@ -247,6 +248,8 @@ export default function PodcastPage() {
             />
           </div>
         </div>
+
+        <ChatPanel podcastId={podcastId} />
       </div>
     </div>
   )
