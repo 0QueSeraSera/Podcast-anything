@@ -8,7 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.api.routes import health, repository, podcast
+from app.api.routes import chat, health, repository, podcast
+from app.services.chat_service import get_chat_service
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -49,11 +50,13 @@ async def lifespan(app: FastAPI):
     _configure_logging()
     Path(settings.temp_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.audio_output_dir).mkdir(parents=True, exist_ok=True)
+    get_chat_service().initialize()
     logger.info(
         "Backend startup complete",
         extra={
             "temp_dir": settings.temp_dir,
             "audio_output_dir": settings.audio_output_dir,
+            "chat_db_path": settings.chat_db_path,
             "cors_allow_all": settings.cors_allow_all,
             "cors_allow_origins": settings.cors_allow_origins_list,
         },
@@ -77,3 +80,4 @@ app.add_middleware(CORSMiddleware, **_build_cors_options())
 app.include_router(health.router, tags=["Health"])
 app.include_router(repository.router, prefix="/api/v1/repository", tags=["Repository"])
 app.include_router(podcast.router, prefix="/api/v1/podcast", tags=["Podcast"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])

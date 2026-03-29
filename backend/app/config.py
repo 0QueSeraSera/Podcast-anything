@@ -37,11 +37,20 @@ class Settings(BaseSettings):
     temp_dir: str = "/tmp/podcast-anything"
     audio_output_dir: str = "/tmp/podcast-anything/audio"
     claude_output_dir: str = "/tmp/podcast-anything/claude-output"
+    chat_db_path: str = "/tmp/podcast-anything/chat.sqlite3"
 
     # TTS Settings
     tts_model: str = "qwen3-tts-flash"
     tts_voice: str = "Cherry"
     tts_chunk_size: int = 500
+
+    # Chat settings
+    chat_max_context_chars: int = 16000
+    chat_retrieval_top_k: int = 6
+    chat_chunk_size: int = 1200
+    chat_chunk_overlap: int = 160
+    chat_generation_timeout_seconds: float = 20.0
+    chat_generation_retries: int = 1
 
     # Redis (for Celery)
     redis_url: str = "redis://localhost:6379/0"

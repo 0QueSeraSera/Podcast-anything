@@ -141,3 +141,92 @@ class SavedPodcastMetadata(BaseModel):
 class SavedPodcastListResponse(BaseModel):
     """List of saved podcasts."""
     podcasts: list[SavedPodcastMetadata]
+
+
+# Chat Schemas
+
+class ChatRole(str, Enum):
+    """Chat message roles."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+
+class ErrorInfo(BaseModel):
+    """Typed API error details for frontend branching."""
+
+    code: str
+    message: str
+
+
+class ChatSessionCreateRequest(BaseModel):
+    """Request payload for creating a chat session."""
+
+    title: Optional[str] = None
+    repo_id: Optional[str] = None
+    podcast_id: Optional[str] = None
+    selected_files: list[str] = Field(default_factory=list)
+    script_path: Optional[str] = None
+
+
+class ChatSessionResponse(BaseModel):
+    """Chat session metadata."""
+
+    session_id: str
+    title: str
+    repo_id: Optional[str] = None
+    podcast_id: Optional[str] = None
+    selected_files: list[str] = Field(default_factory=list)
+    script_path: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceCitation(BaseModel):
+    """Metadata for source snippets used to answer a question."""
+
+    path: str
+    chunk_id: str
+    source_type: str
+    snippet: Optional[str] = None
+    score: Optional[float] = None
+
+
+class ChatMessage(BaseModel):
+    """A single persisted chat message."""
+
+    message_id: str
+    session_id: str
+    role: ChatRole
+    content: str
+    sources: list[SourceCitation] = Field(default_factory=list)
+    created_at: datetime
+
+
+class ChatMessagesResponse(BaseModel):
+    """Session metadata + full message history."""
+
+    session: ChatSessionResponse
+    messages: list[ChatMessage]
+
+
+class ChatMessageCreateRequest(BaseModel):
+    """Submit a user message to the chat session."""
+
+    content: str = Field(..., min_length=1, max_length=8000)
+
+
+class ChatMessageResponse(BaseModel):
+    """Round-trip user + assistant message response."""
+
+    session_id: str
+    user_message: ChatMessage
+    assistant_message: ChatMessage
+
+
+class ChatExportFormat(str, Enum):
+    """Transcript export formats."""
+
+    MARKDOWN = "markdown"
+    JSON = "json"
