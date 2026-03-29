@@ -83,71 +83,71 @@ Conventions:
 - Priority: `P1`
 - Effort: `M`
 - Depends on: `P0`
-- [ ] Choose lightweight DB approach (sqlite3 or SQLAlchemy).
-- [ ] Add migration/init path for local DB file.
-- [ ] Add repository layer for chat sessions/messages.
+- [x] Choose lightweight DB approach (sqlite3 or SQLAlchemy).
+- [x] Add migration/init path for local DB file.
+- [x] Add repository layer for chat sessions/messages.
 - DoD: DB file initializes automatically and stores data.
 
 ### PA-102 Define chat data schema
 - Priority: `P1`
 - Effort: `S`
 - Depends on: `PA-101`
-- [ ] Create `chat_sessions` schema.
-- [ ] Create `chat_messages` schema.
-- [ ] Add optional context snapshot fields (`repo_id`, `podcast_id`, selected files, script path).
+- [x] Create `chat_sessions` schema.
+- [x] Create `chat_messages` schema.
+- [x] Add optional context snapshot fields (`repo_id`, `podcast_id`, selected files, script path).
 - DoD: schema supports persistent threaded chat.
 
 ### PA-103 Chat session API
 - Priority: `P1`
 - Effort: `S`
 - Depends on: `PA-101`, `PA-102`
-- [ ] Implement `POST /api/v1/chat/sessions`.
-- [ ] Implement `GET /api/v1/chat/{session_id}/messages`.
-- [ ] Add request/response schemas and error codes.
+- [x] Implement `POST /api/v1/chat/sessions`.
+- [x] Implement `GET /api/v1/chat/{session_id}/messages`.
+- [x] Add request/response schemas and error codes.
 - DoD: session creation and history retrieval work.
 
 ### PA-104 Chat message API (non-streaming)
 - Priority: `P1`
 - Effort: `M`
 - Depends on: `PA-103`
-- [ ] Implement `POST /api/v1/chat/{session_id}/messages`.
-- [ ] Persist user and assistant messages.
-- [ ] Return assistant answer with optional source metadata.
+- [x] Implement `POST /api/v1/chat/{session_id}/messages`.
+- [x] Persist user and assistant messages.
+- [x] Return assistant answer with optional source metadata.
 - DoD: end-to-end ask/answer with persistence.
 
 ### PA-105 Build context pack from repo + script
 - Priority: `P1`
 - Effort: `M`
 - Depends on: `PA-104`
-- [ ] Load selected files and script output for session context.
-- [ ] Add token/size guardrails to prevent oversized prompts.
-- [ ] Add deterministic fallback when script/context is missing.
+- [x] Load selected files and script output for session context.
+- [x] Add token/size guardrails to prevent oversized prompts.
+- [x] Add deterministic fallback when script/context is missing.
 - DoD: answers are grounded in available local context.
 
 ### PA-106 Add podcast-page chat panel
 - Priority: `P1`
 - Effort: `M`
 - Depends on: `PA-103`, `PA-104`
-- [ ] Render message history.
-- [ ] Add question input + submit + loading/error UI.
-- [ ] Preserve conversation on refresh via session id.
+- [x] Render message history.
+- [x] Add question input + submit + loading/error UI.
+- [x] Preserve conversation on refresh via session id.
 - DoD: user can ask and see persistent history from podcast page.
 
 ### PA-107 Link podcast flow to chat session
 - Priority: `P1`
 - Effort: `S`
 - Depends on: `PA-106`
-- [ ] Create/reuse chat session when entering podcast page.
-- [ ] Bind session to `podcast_id` and associated `repo_id`.
-- [ ] Handle missing podcast/session recovery.
+- [x] Create/reuse chat session when entering podcast page.
+- [x] Bind session to `podcast_id` and associated `repo_id`.
+- [x] Handle missing podcast/session recovery.
 - DoD: one coherent conversation per podcast context.
 
 ### PA-108 P1 test coverage
 - Priority: `P1`
 - Effort: `M`
 - Depends on: `PA-101`..`PA-107`
-- [ ] Backend tests for chat persistence and API routes.
-- [ ] Frontend integration tests for chat panel behavior.
+- [x] Backend tests for chat persistence and API routes.
+- [x] Frontend integration tests for chat panel behavior.
 - [ ] One E2E: generate podcast -> ask question -> refresh -> history retained.
 - DoD: chat MVP is reliably test-covered.
 
@@ -159,52 +159,52 @@ Conventions:
 - Priority: `P2`
 - Effort: `M`
 - Depends on: `P1`
-- [ ] Chunk files/script into retrieval units.
-- [ ] Implement simple relevance ranking (keyword + section weighting).
-- [ ] Pass top-K chunks into answer prompt.
+- [x] Chunk files/script into retrieval units.
+- [x] Implement simple relevance ranking (keyword + section weighting).
+- [x] Pass top-K chunks into answer prompt.
 - DoD: context selection is explicit and repeatable.
 
 ### PA-202 Add source citations in responses
 - Priority: `P2`
 - Effort: `S`
 - Depends on: `PA-201`
-- [ ] Return source pointers (file path, section/chunk id).
-- [ ] Render citations in frontend answer cards.
-- [ ] Add tests for citation presence.
+- [x] Return source pointers (file path, section/chunk id).
+- [x] Render citations in frontend answer cards.
+- [x] Add tests for citation presence.
 - DoD: technical answers can be traced to source context.
 
 ### PA-203 SSE streaming answers
 - Priority: `P2`
 - Effort: `M`
 - Depends on: `PA-104`
-- [ ] Add `GET /api/v1/chat/{session_id}/stream`.
-- [ ] Add frontend streaming renderer + cancel/retry behavior.
-- [ ] Ensure persistence captures final assistant message.
+- [x] Add `GET /api/v1/chat/{session_id}/stream`.
+- [x] Add frontend streaming renderer + cancel/retry behavior.
+- [x] Ensure persistence captures final assistant message.
 - DoD: incremental token streaming works on desktop and phone.
 
 ### PA-204 Mobile chat UX pass
 - Priority: `P2`
 - Effort: `M`
 - Depends on: `PA-106`, `PA-203`
-- [ ] Keyboard-safe layout and sticky input on mobile.
-- [ ] Quick action prompts (architecture, entry points, summary).
-- [ ] Improve loading and offline/reconnect states.
+- [x] Keyboard-safe layout and sticky input on mobile.
+- [x] Quick action prompts (architecture, entry points, summary).
+- [x] Improve loading and offline/reconnect states.
 - DoD: chat use on phone is smooth for normal sessions.
 
 ### PA-205 Export chat transcript
 - Priority: `P2`
 - Effort: `S`
 - Depends on: `PA-106`
-- [ ] Add endpoint/UI to export transcript (markdown/json).
-- [ ] Include podcast metadata and citation links.
+- [x] Add endpoint/UI to export transcript (markdown/json).
+- [x] Include podcast metadata and citation links.
 - DoD: user can save/share chat learning session.
 
 ### PA-206 Observability and performance guardrails
 - Priority: `P2`
 - Effort: `M`
 - Depends on: `P1`
-- [ ] Add structured logs around chat latency, prompt size, error rates.
-- [ ] Add timeout and retry policy for chat generation calls.
+- [x] Add structured logs around chat latency, prompt size, error rates.
+- [x] Add timeout and retry policy for chat generation calls.
 - [ ] Document expected local performance envelope.
 - DoD: chat behavior is diagnosable and bounded.
 
